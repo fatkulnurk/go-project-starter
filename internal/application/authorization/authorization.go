@@ -17,34 +17,14 @@ var ErrAuthorizationDenied = ErrForbidden
 type Authorizer interface {
 	// Can checks whether identity may perform action on resource.
 	Can(ctx context.Context, identity Identity, action string, resource any) error
-	// CanRole checks whether identity holds the given role.
-	CanRole(ctx context.Context, identity Identity, role string) error
+	// HasRole checks whether identity holds the given role.
+	HasRole(ctx context.Context, identity Identity, role string) error
 }
 
 // Identity is the minimal caller description needed for authorization.
 type Identity struct {
 	UserID string
 	Roles  []string
-}
-
-// HasRole reports whether the identity carries the role in memory.
-func HasRole(id Identity, role string) bool {
-	for _, r := range id.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
-}
-
-// HasAnyRole reports whether the identity carries at least one of the roles.
-func HasAnyRole(id Identity, roles ...string) bool {
-	for _, r := range roles {
-		if HasRole(id, r) {
-			return true
-		}
-	}
-	return false
 }
 
 // Well-known role names. RBAC seeds these and the auth module assigns the
@@ -71,5 +51,5 @@ type AllowAll struct{}
 // Can always returns nil.
 func (AllowAll) Can(context.Context, Identity, string, any) error { return nil }
 
-// CanRole always returns nil.
-func (AllowAll) CanRole(context.Context, Identity, string) error { return nil }
+// HasRole always returns nil.
+func (AllowAll) HasRole(context.Context, Identity, string) error { return nil }

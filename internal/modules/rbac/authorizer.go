@@ -29,8 +29,8 @@ func (a *Authorizer) Can(ctx context.Context, identity authorization.Identity, a
 	return nil
 }
 
-// CanRole implements authorization.Authorizer. An empty role allows everything.
-func (a *Authorizer) CanRole(ctx context.Context, identity authorization.Identity, role string) error {
+// HasRole implements authorization.Authorizer. An empty role allows everything.
+func (a *Authorizer) HasRole(ctx context.Context, identity authorization.Identity, role string) error {
 	if role == "" {
 		return nil
 	}

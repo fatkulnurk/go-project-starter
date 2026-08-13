@@ -38,7 +38,7 @@ func RequireRole(authz authorization.Authorizer, role string) func(http.Handler)
 				WriteError(w, http.StatusUnauthorized, "unauthenticated", "unauthenticated")
 				return
 			}
-			if err := authz.CanRole(r.Context(), authorization.Identity{UserID: id.UserID, Roles: id.Roles}, role); err != nil {
+			if err := authz.HasRole(r.Context(), authorization.Identity{UserID: id.UserID, Roles: id.Roles}, role); err != nil {
 				WriteMappedError(w, err)
 				return
 			}
