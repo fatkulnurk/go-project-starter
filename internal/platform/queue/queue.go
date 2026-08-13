@@ -19,7 +19,7 @@ type Client struct {
 
 // NewClient builds an asynq client from config.
 func NewClient(cfg config.QueueConfig) (*Client, error) {
-	redisOpt, err := parseRedisOpt(cfg.RedisAddr)
+	redisOpt, err := parseRedisOpt(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ type Server struct {
 
 // NewServer builds an asynq server from config.
 func NewServer(cfg config.QueueConfig) (*Server, error) {
-	redisOpt, err := parseRedisOpt(cfg.RedisAddr)
+	redisOpt, err := parseRedisOpt(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +84,14 @@ func (s *Server) Run() error {
 // Stop gracefully stops the server.
 func (s *Server) Stop() { s.srv.Shutdown() }
 
-func parseRedisOpt(addr string) (asynq.RedisClientOpt, error) {
-	if addr == "" {
+func parseRedisOpt(cfg config.QueueConfig) (asynq.RedisClientOpt, error) {
+	if cfg.RedisAddr == "" {
 		return asynq.RedisClientOpt{}, errors.New("queue redis address is empty")
 	}
-	return asynq.RedisClientOpt{Addr: addr}, nil
+	return asynq.RedisClientOpt{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+		PoolSize: cfg.RedisPoolSize,
+	}, nil
 }

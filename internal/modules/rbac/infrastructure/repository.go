@@ -8,8 +8,8 @@ import (
 	"errors"
 
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
+	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/database"
-	"github.com/fatkulnurk/go-project-starter/internal/platform/dbdriver"
 )
 
 // base carries the shared pool and driver used by every repository type.
@@ -24,7 +24,7 @@ func (b base) q(query string) string { return database.Rebind(query, b.driver) }
 // nothing on conflict (PostgreSQL), keeping role/permission grants idempotent.
 func (b base) insertIgnore(table, columns, placeholders string) string {
 	insert := "INSERT INTO " + table + " (" + columns + ") VALUES (" + placeholders + ")"
-	if b.driver == dbdriver.Postgres {
+	if b.driver == config.DriverPostgres {
 		return insert + " ON CONFLICT DO NOTHING"
 	}
 	return "INSERT IGNORE INTO " + table + " (" + columns + ") VALUES (" + placeholders + ")"

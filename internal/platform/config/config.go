@@ -7,8 +7,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/fatkulnurk/go-project-starter/internal/platform/dbdriver"
 )
 
 // Environment names.
@@ -17,18 +15,20 @@ const (
 	EnvironmentProduction  = "production"
 )
 
-// Cache, storage, mail, sms and queue driver names. Each factory in
+// Cache, storage, mail, sms, queue and database driver names. Each factory in
 // internal/platform switches on these constants.
 const (
-	DriverRedis  = "redis"
-	DriverMemory = "memory"
-	DriverLocal  = "local"
-	DriverS3     = "s3"
-	DriverLog    = "log"
-	DriverSMTP   = "smtp"
-	DriverSES    = "ses"
-	DriverTwilio = "twilio"
-	DriverAsynq  = "asynq"
+	DriverMySQL    = "mysql"
+	DriverPostgres = "postgres"
+	DriverRedis    = "redis"
+	DriverMemory   = "memory"
+	DriverLocal    = "local"
+	DriverS3       = "s3"
+	DriverLog      = "log"
+	DriverSMTP     = "smtp"
+	DriverSES      = "ses"
+	DriverTwilio   = "twilio"
+	DriverAsynq    = "asynq"
 )
 
 // Environment variable keys.
@@ -44,13 +44,21 @@ const (
 	envDBPassword = "DB_PASSWORD"
 	envDBName     = "DB_NAME"
 
+	envDBMaxOpenConns    = "DB_MAX_OPEN_CONNS"
+	envDBMaxIdleConns    = "DB_MAX_IDLE_CONNS"
+	envDBConnMaxLifetime = "DB_CONN_MAX_LIFETIME"
+
 	envCacheDriver   = "CACHE_DRIVER"
 	envRedisAddr     = "REDIS_ADDR"
 	envRedisPassword = "REDIS_PASSWORD"
 	envRedisDB       = "REDIS_DB"
+	envRedisPoolSize = "REDIS_POOL_SIZE"
+	envRedisMinIdle  = "REDIS_MIN_IDLE_CONNS"
 
 	envQueueDriver      = "QUEUE_DRIVER"
 	envQueueConcurrency = "QUEUE_CONCURRENCY"
+	envQueueRedisDB     = "QUEUE_REDIS_DB"
+	envQueueRedisPool   = "QUEUE_REDIS_POOL_SIZE"
 
 	envStorageDriver      = "STORAGE_DRIVER"
 	envStorageLocalDir    = "STORAGE_LOCAL_DIR"
@@ -68,6 +76,8 @@ const (
 	envSMTPPort     = "SMTP_PORT"
 	envSMTPUser     = "SMTP_USER"
 	envSMTPPassword = "SMTP_PASSWORD"
+	envSMTPPoolSize = "MAIL_SMTP_POOL_SIZE"
+	envSMTPSSL      = "MAIL_SMTP_SSL"
 	envSESRegion    = "SES_REGION"
 	envSESAccessKey = "SES_ACCESS_KEY"
 	envSESSecretKey = "SES_SECRET_KEY"
@@ -98,16 +108,23 @@ const (
 	defaultEnvironment       = EnvironmentDevelopment
 	defaultPort              = 8080
 	defaultBaseURL           = "http://localhost:8080"
-	defaultDBDriver          = dbdriver.MySQL
+	defaultDBDriver          = DriverMySQL
 	defaultDBHost            = "localhost"
 	defaultDBPort            = 3306
 	defaultDBUser            = "root"
 	defaultDBName            = "go_project_starter"
+	defaultDBMaxOpenConns    = 25
+	defaultDBMaxIdleConns    = 5
+	defaultDBConnMaxLifetime = 5 * time.Minute
 	defaultCacheDriver       = DriverRedis
 	defaultRedisAddr         = "localhost:6379"
 	defaultRedisDB           = 0
+	defaultRedisPoolSize     = 10
+	defaultRedisMinIdle      = 1
 	defaultQueueDriver       = DriverAsynq
 	defaultQueueConcurrency  = 10
+	defaultQueueRedisDB      = 1
+	defaultQueueRedisPool    = 10
 	defaultStorageDriver     = DriverLocal
 	defaultStorageLocalDir   = "./storage"
 	defaultS3Region          = "us-east-1"
@@ -116,6 +133,8 @@ const (
 	defaultMailFromName      = "Go Project Starter"
 	defaultSMTPHost          = "smtp.example.com"
 	defaultSMTPPort          = 587
+	defaultSMTPPoolSize      = 5
+	defaultSMTPSSL           = "starttls"
 	defaultSESRegion         = "us-east-1"
 	defaultSMSDriver         = DriverLog
 	defaultJWTSecret         = "change-me-in-production"
@@ -151,14 +170,18 @@ type RBACConfig struct {
 	SuperAdminEmail    string
 }
 
-// DatabaseConfig selects the SQL driver and connection.
+// DatabaseConfig selects the SQL driver and connection. Pool sizes control
+// how many connections database/sql keeps open/idle.
 type DatabaseConfig struct {
-	Driver   string
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Name     string
+	Driver          string
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	Name            string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
 }
 
 // CacheConfig selects the cache driver.
@@ -169,16 +192,23 @@ type CacheConfig struct {
 
 // RedisConfig holds go-redis connection settings.
 type RedisConfig struct {
-	Addr     string
-	Password string
-	DB       int
+	Addr         string
+	Password     string
+	DB           int
+	PoolSize     int
+	MinIdleConns int
 }
 
-// QueueConfig selects the queue backend.
+// QueueConfig selects the queue backend. RedisAddr/Password reuse the cache
+// Redis settings; DB is kept separate from the cache so both can share one
+// Redis server without key collisions.
 type QueueConfig struct {
-	Driver      string
-	RedisAddr   string
-	Concurrency int
+	Driver        string
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+	RedisPoolSize int
+	Concurrency   int
 }
 
 // StorageConfig selects the storage driver.
@@ -218,6 +248,9 @@ type SMTPConfig struct {
 	Port     int
 	User     string
 	Password string
+	PoolSize int
+	// SSL is one of "none", "tls", "starttls". Defaults to "starttls".
+	SSL string
 }
 
 // SESConfig holds Amazon SES (SESv2) settings.
@@ -263,25 +296,33 @@ func Load() (Config, error) {
 		Port:        getenvInt(envAppPort, defaultPort),
 		BaseURL:     getenv(envAppBaseURL, defaultBaseURL),
 		Database: DatabaseConfig{
-			Driver:   getenv(envDBDriver, defaultDBDriver),
-			Host:     getenv(envDBHost, defaultDBHost),
-			Port:     getenvInt(envDBPort, defaultDBPort),
-			User:     getenv(envDBUser, defaultDBUser),
-			Password: getenv(envDBPassword, ""),
-			Name:     getenv(envDBName, defaultDBName),
+			Driver:          getenv(envDBDriver, defaultDBDriver),
+			Host:            getenv(envDBHost, defaultDBHost),
+			Port:            getenvInt(envDBPort, defaultDBPort),
+			User:            getenv(envDBUser, defaultDBUser),
+			Password:        getenv(envDBPassword, ""),
+			Name:            getenv(envDBName, defaultDBName),
+			MaxOpenConns:    getenvInt(envDBMaxOpenConns, defaultDBMaxOpenConns),
+			MaxIdleConns:    getenvInt(envDBMaxIdleConns, defaultDBMaxIdleConns),
+			ConnMaxLifetime: getenvDuration(envDBConnMaxLifetime, defaultDBConnMaxLifetime),
 		},
 		Cache: CacheConfig{
 			Driver: getenv(envCacheDriver, defaultCacheDriver),
 			Redis: RedisConfig{
-				Addr:     getenv(envRedisAddr, defaultRedisAddr),
-				Password: getenv(envRedisPassword, ""),
-				DB:       getenvInt(envRedisDB, defaultRedisDB),
+				Addr:         getenv(envRedisAddr, defaultRedisAddr),
+				Password:     getenv(envRedisPassword, ""),
+				DB:           getenvInt(envRedisDB, defaultRedisDB),
+				PoolSize:     getenvInt(envRedisPoolSize, defaultRedisPoolSize),
+				MinIdleConns: getenvInt(envRedisMinIdle, defaultRedisMinIdle),
 			},
 		},
 		Queue: QueueConfig{
-			Driver:      getenv(envQueueDriver, defaultQueueDriver),
-			RedisAddr:   getenv(envRedisAddr, defaultRedisAddr),
-			Concurrency: getenvInt(envQueueConcurrency, defaultQueueConcurrency),
+			Driver:        getenv(envQueueDriver, defaultQueueDriver),
+			RedisAddr:     getenv(envRedisAddr, defaultRedisAddr),
+			RedisPassword: getenv(envRedisPassword, ""),
+			RedisDB:       getenvInt(envQueueRedisDB, defaultQueueRedisDB),
+			RedisPoolSize: getenvInt(envQueueRedisPool, defaultQueueRedisPool),
+			Concurrency:   getenvInt(envQueueConcurrency, defaultQueueConcurrency),
 		},
 		Storage: StorageConfig{
 			Driver: getenv(envStorageDriver, defaultStorageDriver),
@@ -304,6 +345,8 @@ func Load() (Config, error) {
 				Port:     getenvInt(envSMTPPort, defaultSMTPPort),
 				User:     getenv(envSMTPUser, ""),
 				Password: getenv(envSMTPPassword, ""),
+				PoolSize: getenvInt(envSMTPPoolSize, defaultSMTPPoolSize),
+				SSL:      getenv(envSMTPSSL, defaultSMTPSSL),
 			},
 			SES: SESConfig{
 				Region:    getenv(envSESRegion, defaultSESRegion),
@@ -346,7 +389,7 @@ func Load() (Config, error) {
 
 func (c Config) validate() error {
 	switch c.Database.Driver {
-	case dbdriver.MySQL, dbdriver.Postgres:
+	case DriverMySQL, DriverPostgres:
 	default:
 		return errors.New("DB_DRIVER must be 'mysql' or 'postgres'")
 	}

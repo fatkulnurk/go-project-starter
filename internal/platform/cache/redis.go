@@ -18,9 +18,11 @@ type Redis struct {
 // NewRedis builds a Redis cache from config.
 func NewRedis(cfg config.RedisConfig) *Redis {
 	return &Redis{client: redis.NewClient(&redis.Options{
-		Addr:     cfg.Addr,
-		Password: cfg.Password,
-		DB:       cfg.DB,
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
+		PoolSize:     cfg.PoolSize,
+		MinIdleConns: cfg.MinIdleConns,
 	})}
 }
 

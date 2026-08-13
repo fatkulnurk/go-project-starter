@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
-	"github.com/fatkulnurk/go-project-starter/internal/platform/dbdriver"
 	_ "github.com/go-sql-driver/mysql" // mysql driver
 	_ "github.com/jackc/pgx/v5/stdlib" // postgres driver
 )
@@ -22,9 +21,15 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", cfg.Driver, err)
 	}
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	if cfg.MaxOpenConns > 0 {
+		db.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+	if cfg.MaxIdleConns > 0 {
+		db.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+	if cfg.ConnMaxLifetime > 0 {
+		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -38,7 +43,7 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 // DSN builds a driver-agnostic database/sql DSN for cfg.
 func DSN(cfg config.DatabaseConfig) (string, string) {
 	switch cfg.Driver {
-	case dbdriver.Postgres:
+	case config.DriverPostgres:
 		return fmt.Sprintf(
 			"postgres://%s:%s@%s:%d/%s?sslmode=disable",
 			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
@@ -47,14 +52,14 @@ func DSN(cfg config.DatabaseConfig) (string, string) {
 		return fmt.Sprintf(
 			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC",
 			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
-		), dbdriver.MySQL
+		), config.DriverMySQL
 	}
 }
 
 // MigrateURL builds a golang-migrate database URL for cfg.
 func MigrateURL(cfg config.DatabaseConfig) string {
 	switch cfg.Driver {
-	case dbdriver.Postgres:
+	case config.DriverPostgres:
 		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
 			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
 	default:
@@ -67,7 +72,7 @@ func MigrateURL(cfg config.DatabaseConfig) string {
 // postgres. For mysql it returns the query unchanged. This keeps repository
 // SQL written once with '?' placeholders.
 func Rebind(query, driver string) string {
-	if driver != dbdriver.Postgres {
+	if driver != config.DriverPostgres {
 		return query
 	}
 	var b strings.Builder
