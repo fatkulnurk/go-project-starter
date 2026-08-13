@@ -1,0 +1,60 @@
+# Layer rules for go-arch-lint. Cross-module rules (only module.API/Service
+# allowed) are enforced by the grep check in `make check` (see Makefile).
+version: 3
+workdir: .
+
+allow:
+  - packages:
+      - cmd/**
+    to:
+      - packages:
+          - internal/**
+
+  - packages:
+      - internal/platform/**
+    to:
+      - packages: []
+
+  - packages:
+      - internal/application/**
+    to:
+      - packages: []
+
+  - packages:
+      - internal/modules/**/domain/**
+    to:
+      - packages:
+          - internal/application/apierr
+
+  - packages:
+      - internal/modules/**/application/**
+    to:
+      - packages:
+          - internal/modules/**/domain/**
+          - internal/application/**
+          - internal/platform/clock
+
+  - packages:
+      - internal/modules/**/infrastructure/**
+    to:
+      - packages:
+          - internal/modules/**/domain/**
+          - internal/application/**
+          - internal/platform/**
+
+  - packages:
+      - internal/modules/**/adapters/**
+    to:
+      - packages:
+          - internal/modules/**/application/**
+          - internal/application/**
+          - internal/platform/http/**
+
+  - packages:
+      - internal/modules/**
+    to:
+      - packages:
+          - internal/application/**
+          # Cross-module dependency: only the package root (module.API /
+          # Service) is allowed; internals are blocked by the grep check.
+          - internal/modules/**

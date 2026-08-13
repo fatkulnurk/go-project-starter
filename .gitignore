@@ -1,0 +1,22 @@
+# Binaries
+/bin/
+*.exe
+*.out
+
+# Local env
+.env
+
+# Local storage
+/storage/*
+!/storage/.gitkeep
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
