@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	appid "github.com/fatkulnurk/go-project-starter/internal/application/id"
 	appstorage "github.com/fatkulnurk/go-project-starter/internal/application/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media"
@@ -23,6 +24,7 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/database"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/hash"
 	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
+	platformid "github.com/fatkulnurk/go-project-starter/internal/platform/id"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/logger"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/mailer"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/queue"
@@ -46,6 +48,9 @@ func run() error {
 	}
 	log := logger.New(cfg.Environment)
 	slog.SetDefault(log)
+
+	// Wire the shared identifier generator before anything mints IDs.
+	appid.SetDefault(platformid.Generator{})
 
 	clk := clock.Real{Loc: cfg.Location()}
 	devMode := cfg.Environment != config.EnvironmentProduction

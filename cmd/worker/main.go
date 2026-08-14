@@ -8,12 +8,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	appid "github.com/fatkulnurk/go-project-starter/internal/application/id"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/database"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/hash"
+	"github.com/fatkulnurk/go-project-starter/internal/platform/id"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/logger"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/mailer"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/queue"
@@ -36,6 +38,9 @@ func run() error {
 	}
 	log := logger.New(cfg.Environment)
 	slog.SetDefault(log)
+
+	// Wire the shared identifier generator before anything mints IDs.
+	appid.SetDefault(id.Generator{})
 
 	db, err := database.New(cfg.Database)
 	if err != nil {
