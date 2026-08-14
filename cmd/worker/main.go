@@ -58,12 +58,12 @@ func run() error {
 		return err
 	}
 
-	queueServer, err := queue.NewServer(cfg.Queue, log)
+	queueServer, err := queue.NewServer(cfg.Queue, log, db, cfg.Database.Driver)
 	if err != nil {
 		return err
 	}
 
-	queueClient, err := queue.NewClient(cfg.Queue)
+	queueClient, err := queue.NewClient(cfg.Queue, db, cfg.Database.Driver)
 	if err != nil {
 		return err
 	}

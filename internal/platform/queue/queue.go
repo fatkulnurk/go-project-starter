@@ -1,9 +1,10 @@
-// Package queue provides the asynq-based queue backend. Business modules must
-// only use the internal/application/queue contracts.
+// Package queue provides the queue backends and their factories. Business
+// modules must only use the internal/application/queue contracts.
 package queue
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,22 +15,67 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// Client enqueues tasks to Redis via asynq.
-type Client struct {
+// Client is the union of the application enqueuer contract and cleanup.
+type Client interface {
+	queue.Enqueuer
+	Close() error
+}
+
+// Worker is the union of task registration and the run/stop lifecycle.
+type Worker interface {
+	queue.Registrar
+	Run() error
+	Stop()
+}
+
+// NewClient builds an enqueuing client for the configured driver. db and
+// dbDriver are only used when the driver is "db" and may be nil otherwise.
+func NewClient(cfg config.QueueConfig, db *sql.DB, dbDriver string) (Client, error) {
+	switch cfg.Driver {
+	case config.DriverDB:
+		if db == nil {
+			return nil, fmt.Errorf("queue driver %q requires a database connection", cfg.Driver)
+		}
+		return NewDatabaseClient(db, dbDriver), nil
+	case config.DriverAsynq:
+		return newAsynqClient(cfg)
+	default:
+		return nil, fmt.Errorf("unknown queue driver %q", cfg.Driver)
+	}
+}
+
+// NewServer builds a task-processing server for the configured driver. db and
+// dbDriver are only used when the driver is "db" and may be nil otherwise.
+func NewServer(cfg config.QueueConfig, log *slog.Logger, db *sql.DB, dbDriver string) (Worker, error) {
+	switch cfg.Driver {
+	case config.DriverDB:
+		if db == nil {
+			return nil, fmt.Errorf("queue driver %q requires a database connection", cfg.Driver)
+		}
+		return NewDatabaseServer(db, dbDriver, cfg.Concurrency, log), nil
+	case config.DriverAsynq:
+		return newAsynqServer(cfg, log)
+	default:
+		return nil, fmt.Errorf("unknown queue driver %q", cfg.Driver)
+	}
+}
+
+// AsynqClient enqueues tasks to Redis via asynq.
+type AsynqClient struct {
 	c *asynq.Client
 }
 
-// NewClient builds an asynq client from config.
-func NewClient(cfg config.QueueConfig) (*Client, error) {
+// newAsynqClient builds an asynq client from config.
+func newAsynqClient(cfg config.QueueConfig) (*AsynqClient, error) {
 	redisOpt, err := parseRedisOpt(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{c: asynq.NewClient(redisOpt)}, nil
+	return &AsynqClient{c: asynq.NewClient(redisOpt)}, nil
 }
 
 // Enqueue implements queue.Enqueuer.
-func (c *Client) Enqueue(ctx context.Context, t queue.Task) error {
+func (c *AsynqClient) Enqueue(ctx context.Context, t queue.Task) error {
 	opts := make([]asynq.Option, 0, 1)
 	if t.MaxRetry > 0 {
 		opts = append(opts, asynq.MaxRetry(t.MaxRetry))
@@ -40,18 +86,18 @@ func (c *Client) Enqueue(ctx context.Context, t queue.Task) error {
 }
 
 // Close releases the client connection.
-func (c *Client) Close() error { return c.c.Close() }
+func (c *AsynqClient) Close() error { return c.c.Close() }
 
-// Server runs task handlers registered by modules.
-type Server struct {
+// AsynqServer runs task handlers registered by modules.
+type AsynqServer struct {
 	srv *asynq.Server
 	mux *asynq.ServeMux
 }
 
-// NewServer builds an asynq server from config. The server logs through the
-// provided slog logger, records failures via the error handler, and reports
-// liveness through the health check.
-func NewServer(cfg config.QueueConfig, log *slog.Logger) (*Server, error) {
+// newAsynqServer builds an asynq server from config. The server logs through
+// the provided slog logger, records failures via the error handler, and
+// reports liveness through the health check.
+func newAsynqServer(cfg config.QueueConfig, log *slog.Logger) (*AsynqServer, error) {
 	redisOpt, err := parseRedisOpt(cfg)
 	if err != nil {
 		return nil, err
@@ -81,11 +127,11 @@ func NewServer(cfg config.QueueConfig, log *slog.Logger) (*Server, error) {
 		HealthCheckInterval: 30 * time.Second,
 		ShutdownTimeout:     10 * time.Second,
 	})
-	return &Server{srv: srv, mux: asynq.NewServeMux()}, nil
+	return &AsynqServer{srv: srv, mux: asynq.NewServeMux()}, nil
 }
 
 // Register implements queue.Registrar.
-func (s *Server) Register(taskType string, h queue.TaskHandler) {
+func (s *AsynqServer) Register(taskType string, h queue.TaskHandler) {
 	s.mux.HandleFunc(taskType, func(ctx context.Context, t *asynq.Task) error {
 		err := h(ctx, t.Payload())
 		if errors.Is(err, queue.ErrPermanent) {
@@ -96,7 +142,7 @@ func (s *Server) Register(taskType string, h queue.TaskHandler) {
 }
 
 // Run blocks and processes tasks until Stop is called.
-func (s *Server) Run() error {
+func (s *AsynqServer) Run() error {
 	if err := s.srv.Run(s.mux); err != nil {
 		return fmt.Errorf("asynq server: %w", err)
 	}
@@ -104,7 +150,7 @@ func (s *Server) Run() error {
 }
 
 // Stop gracefully stops the server.
-func (s *Server) Stop() { s.srv.Shutdown() }
+func (s *AsynqServer) Stop() { s.srv.Shutdown() }
 
 // slogAdapter adapts slog to asynq.Logger.
 type slogAdapter struct {

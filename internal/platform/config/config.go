@@ -587,14 +587,14 @@ func (c Config) validate() []string {
 	}
 
 	switch c.Queue.Driver {
-	case DriverAsynq:
+	case DriverAsynq, DriverDB:
 	default:
-		errs = append(errs, "QUEUE_DRIVER must be 'asynq'")
+		errs = append(errs, "QUEUE_DRIVER must be 'asynq' or 'db'")
 	}
 	if c.Queue.Concurrency < 1 {
 		errs = append(errs, "QUEUE_CONCURRENCY must be >= 1")
 	}
-	if c.Queue.RedisPoolSize < 1 {
+	if c.Queue.Driver == DriverAsynq && c.Queue.RedisPoolSize < 1 {
 		errs = append(errs, "QUEUE_REDIS_POOL_SIZE must be >= 1")
 	}
 

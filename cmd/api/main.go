@@ -66,7 +66,7 @@ func run() error {
 	}
 	defer cacheClient.Close()
 
-	queueClient, err := queue.NewClient(cfg.Queue)
+	queueClient, err := queue.NewClient(cfg.Queue, db, cfg.Database.Driver)
 	if err != nil {
 		return err
 	}
