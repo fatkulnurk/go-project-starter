@@ -105,6 +105,7 @@ func run() error {
 			PublicRateLimitWindow: cfg.Auth.RateLimitPublicWindow,
 			BaseURL:               cfg.BaseURL,
 			AppName:               cfg.AppName,
+			AssetsBaseURL:         cfg.AssetsBaseURLOrDefault(),
 			DevMode:               devMode,
 		},
 	})

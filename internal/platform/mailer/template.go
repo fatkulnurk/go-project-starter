@@ -14,7 +14,10 @@ var layoutFS embed.FS
 type Common struct {
 	AppName string
 	BaseURL string
-	Year    int
+	// AssetsBaseURL is the absolute base URL of static assets (e.g. a CDN or
+	// the app's /assets mount). Used to reference logos/banners in email HTML.
+	AssetsBaseURL string
+	Year          int
 }
 
 // NewEmailLayout parses the shared email layout into a template set that

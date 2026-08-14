@@ -19,7 +19,10 @@ var baseFS embed.FS
 type Common struct {
 	AppName string
 	BaseURL string
-	Year    int
+	// AssetsBaseURL is the absolute base URL of static assets (e.g. a CDN or
+	// the app's /assets mount).
+	AssetsBaseURL string
+	Year          int
 }
 
 // NewLayout parses the shared base layout into a template set that defines

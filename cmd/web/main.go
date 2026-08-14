@@ -40,13 +40,15 @@ func run() error {
 
 	homepageModule := homepage.New(homepage.Dependencies{
 		Settings: homepage.Settings{
-			AppName: cfg.AppName,
-			BaseURL: cfg.BaseURL,
-			Year:    clk.Now().Year(),
+			AppName:       cfg.AppName,
+			BaseURL:       cfg.BaseURL,
+			AssetsBaseURL: cfg.AssetsBaseURLOrDefault(),
+			Year:          clk.Now().Year(),
 		},
 	})
 
 	router := platformhttp.NewRouter()
+	platformhttp.MountStatic(router, cfg.PublicDir, "/assets")
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

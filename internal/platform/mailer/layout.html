@@ -10,6 +10,7 @@
   .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px; }
   .header { text-align: center; padding-bottom: 24px; border-bottom: 1px solid #edf2f7; }
   .brand { font-size: 20px; font-weight: 700; color: #3182ce; }
+  .brand-img { max-width: 160px; max-height: 48px; height: auto; }
   .content { padding-top: 24px; font-size: 15px; line-height: 1.6; }
   .code { display: inline-block; margin: 16px 0; padding: 12px 20px; background: #ebf8ff; border: 1px solid #90cdf4; border-radius: 8px; font-size: 22px; font-weight: 700; letter-spacing: 4px; color: #2b6cb0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .button { display: inline-block; margin: 16px 0; padding: 12px 28px; background: #3182ce; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; }
@@ -19,7 +20,9 @@
 <body>
   <div class="wrapper">
     <div class="card">
-      <div class="header"><span class="brand">{{.Common.AppName}}</span></div>
+      <div class="header">
+        {{if .Common.AssetsBaseURL}}<img class="brand-img" src="{{.Common.AssetsBaseURL}}/assets/logo.png" alt="{{.Common.AppName}}">{{else}}<span class="brand">{{.Common.AppName}}</span>{{end}}
+      </div>
       <div class="content">{{block "content" .}}{{end}}</div>
     </div>
     <div class="footer">© {{.Common.Year}} {{.Common.AppName}} · <a href="{{.Common.BaseURL}}">{{.Common.BaseURL}}</a></div>

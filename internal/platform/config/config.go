@@ -121,6 +121,8 @@ const (
 
 	envMediaMaxUploadSize = "MEDIA_MAX_UPLOAD_SIZE"
 
+	envPublicDir         = "PUBLIC_DIR"
+	envAssetsBaseURL     = "ASSETS_BASE_URL"
 	envTrustedProxies    = "TRUSTED_PROXIES"
 	envCORSAllowedOrigin = "CORS_ALLOWED_ORIGINS"
 )
@@ -183,6 +185,7 @@ const (
 	defaultRateLimitPublicWindow = 1 * time.Minute
 	defaultRBACCacheTTL          = 5 * time.Minute
 	defaultMediaMaxUploadSize    = 10 << 20 // 10 MiB
+	defaultPublicDir             = "./public"
 )
 
 // Config is the union of all settings needed by every binary.
@@ -194,6 +197,12 @@ type Config struct {
 	WebPort int
 	BaseURL string
 	AppName string
+	// PublicDir is the root directory served at /assets/* (static files for
+	// email and web). Defaults to ./public.
+	PublicDir string
+	// AssetsBaseURL is the absolute base URL of static assets (defaults to
+	// BaseURL when empty, so it can point at a CDN).
+	AssetsBaseURL string
 	// TimeZone is an IANA location name (e.g. "UTC", "Asia/Jakarta") the
 	// whole app follows: DB sessions, clock and stored timestamps.
 	TimeZone string
@@ -258,6 +267,16 @@ func (c Config) Location() *time.Location {
 		return loc
 	}
 	return time.UTC
+}
+
+// AssetsBaseURLOrDefault returns the configured ASSETS_BASE_URL, falling back
+// to APP_BASE_URL when empty so static asset URLs work out of the box while
+// still allowing a dedicated CDN.
+func (c Config) AssetsBaseURLOrDefault() string {
+	if strings.TrimSpace(c.AssetsBaseURL) != "" {
+		return strings.TrimRight(c.AssetsBaseURL, "/")
+	}
+	return strings.TrimRight(c.BaseURL, "/")
 }
 
 // CacheConfig selects the cache driver.
@@ -443,12 +462,14 @@ func (b *builder) list(key string) []string {
 func Load() (Config, error) {
 	b := &builder{}
 	cfg := Config{
-		Environment: b.str(envAppEnv, defaultEnvironment),
-		Port:        b.int(envAppPort, defaultPort),
-		WebPort:     b.int(envWebPort, defaultWebPort),
-		BaseURL:     b.str(envAppBaseURL, defaultBaseURL),
-		AppName:     b.str(envAppName, defaultAppName),
-		TimeZone:    b.str(envAppTimeZone, defaultTimeZone),
+		Environment:   b.str(envAppEnv, defaultEnvironment),
+		Port:          b.int(envAppPort, defaultPort),
+		WebPort:       b.int(envWebPort, defaultWebPort),
+		BaseURL:       b.str(envAppBaseURL, defaultBaseURL),
+		AppName:       b.str(envAppName, defaultAppName),
+		PublicDir:     b.str(envPublicDir, defaultPublicDir),
+		AssetsBaseURL: b.str(envAssetsBaseURL, ""),
+		TimeZone:      b.str(envAppTimeZone, defaultTimeZone),
 
 		TrustedProxies:     b.list(envTrustedProxies),
 		CORSAllowedOrigins: b.list(envCORSAllowedOrigin),
@@ -576,6 +597,9 @@ func (c Config) validate() []string {
 	}
 	if _, err := url.ParseRequestURI(c.BaseURL); err != nil || !strings.Contains(c.BaseURL, "://") {
 		errs = append(errs, fmt.Sprintf("APP_BASE_URL must be an absolute URL, got %q", c.BaseURL))
+	}
+	if strings.TrimSpace(c.PublicDir) == "" {
+		errs = append(errs, "PUBLIC_DIR must not be empty")
 	}
 	if _, err := time.LoadLocation(c.TimeZone); err != nil {
 		errs = append(errs, fmt.Sprintf("APP_TIMEZONE must be a valid IANA location (e.g. UTC, Asia/Jakarta), got %q", c.TimeZone))

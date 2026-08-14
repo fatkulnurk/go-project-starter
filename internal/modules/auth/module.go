@@ -44,7 +44,10 @@ type Settings struct {
 	PublicRateLimitWindow time.Duration
 	BaseURL               string
 	AppName               string
-	DevMode               bool
+	// AssetsBaseURL is the absolute base URL of static assets used in email
+	// HTML (defaults to BaseURL when empty).
+	AssetsBaseURL string
+	DevMode       bool
 }
 
 // Dependencies are the ports the module needs; all wired by the composition
@@ -152,9 +155,10 @@ func (m *Module) RegisterQueue(r appaqueue.Registrar) {
 // queueadapterCommon builds the branding injected into rendered messages.
 func queueadapterCommon(s Settings, clk clock.Clock) queueadapter.Common {
 	return queueadapter.Common{
-		AppName: s.AppName,
-		BaseURL: s.BaseURL,
-		Year:    clk.Now().Year(),
+		AppName:       s.AppName,
+		BaseURL:       s.BaseURL,
+		AssetsBaseURL: s.AssetsBaseURL,
+		Year:          clk.Now().Year(),
 	}
 }
 

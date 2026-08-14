@@ -5,17 +5,32 @@ deployable binary, isolated business modules, and explicit dependencies
 between modules.
 
 ```text
-cmd/                    entry points (composition roots)
+cmd/                    entry points / binaries (api, web, worker, migrate)
 internal/platform/      technical infrastructure (how the system does something)
 internal/application/   cross-cutting capabilities (contracts: auth, cache, queue, storage, mailer, sms, ...)
 internal/modules/       business modules (what the business does)
 migrations/             SQL migrations (MySQL & PostgreSQL compatible)
 storage/                local storage root for the `local` storage driver
+public/                 static assets (logo, CSS, images) served at /assets/*
 ```
 
 Each layer has a README describing what belongs there — see
-`internal/README.md`, `internal/platform/README.md`,
-`internal/application/README.md`, and `internal/modules/README.md`.
+`cmd/README.md`, `internal/README.md`, `internal/platform/README.md`,
+`internal/application/README.md`, `internal/modules/README.md`,
+`migrations/README.md`, and `storage/README.md`.
+
+## Binaries (`cmd/`)
+
+| Command     | Purpose                                                              |
+| ----------- | -------------------------------------------------------------------- |
+| `api`       | HTTP API server (`APP_PORT`) — auth, media, RBAC routes + `/assets/*`|
+| `web`       | Public web server (`WEB_PORT`) — homepage landing page + `/assets/*` |
+| `worker`    | Queue worker — processes email/SMS tasks enqueued by the API         |
+| `migrate`   | Migration CLI — applies/reverts `migrations/` (`up`, `down`, `version`) |
+
+The API and worker share the same modules; email/SMS are enqueued by the API
+and delivered by the worker. The web binary serves the public homepage
+independently on its own port.
 
 ## Features
 
@@ -44,6 +59,10 @@ Each layer has a README describing what belongs there — see
 - **SMS** — drivers: `log`, `twilio`.
 - **Storage** — drivers: `local` (files under `./storage`) and `s3`
   (real AWS or S3-compatible: MinIO, R2, Ceph).
+- **Public assets** — files in `public/` served at `/assets/*` by the API and
+  web servers. Email HTML and web templates reference them via `ASSETS_BASE_URL`
+  (defaults to `APP_BASE_URL`, can point at a CDN). Put `logo.png` etc. in
+  `public/assets/`.
 - **Cache** — drivers: `redis`, `memory`.
 - **Database** — `mysql` (default) or `postgres`, driven by `database/sql`
   with portable SQL (`?` placeholders rebound for postgres).
@@ -71,12 +90,13 @@ literals live in constants (see `config`, `permission`, the DTO files).
    external credentials.
 2. Start MySQL and Redis, then:
 
-   ```sh
-   go mod tidy
-   go run ./cmd/migrate up
-   go run ./cmd/api
-   go run ./cmd/worker   # separate terminal — processes email/SMS tasks
-   ```
+```sh
+go mod tidy
+go run ./cmd/migrate up
+go run ./cmd/api
+go run ./cmd/worker   # separate terminal — processes email/SMS tasks
+go run ./cmd/web      # optional — public homepage on WEB_PORT
+```
 
 3. In development (`APP_ENV=development`) OTP codes and magic links are
    returned in the API responses so you can exercise the flows end-to-end.
@@ -144,6 +164,9 @@ module code stays unchanged.
 
 - `APP_TIMEZONE` — IANA location (e.g. `Asia/Jakarta`), default `UTC`. The
   whole app follows it: DB session, clock and Go-written timestamps.
+- `PUBLIC_DIR` — directory served statically at `/assets/*` (default `./public`).
+- `ASSETS_BASE_URL` — absolute base URL for static assets used in email/web
+  (empty = `APP_BASE_URL`, so it can point at a CDN).
 - `DB_DRIVER=mysql|postgres`
 - `CACHE_DRIVER=redis|memory|db`
 - `STORAGE_DRIVER=local|s3`

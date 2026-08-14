@@ -136,6 +136,7 @@ func run() error {
 			PublicRateLimitWindow: cfg.Auth.RateLimitPublicWindow,
 			BaseURL:               cfg.BaseURL,
 			AppName:               cfg.AppName,
+			AssetsBaseURL:         cfg.AssetsBaseURLOrDefault(),
 			DevMode:               devMode,
 		},
 	})
@@ -173,6 +174,7 @@ func run() error {
 	router := platformhttp.NewRouter(platformhttp.RouterOptions{
 		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
 	})
+	platformhttp.MountStatic(router, cfg.PublicDir, "/assets")
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

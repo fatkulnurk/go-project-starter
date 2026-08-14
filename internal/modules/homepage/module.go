@@ -10,7 +10,10 @@ import (
 type Settings struct {
 	AppName string
 	BaseURL string
-	Year    int
+	// AssetsBaseURL is the absolute base URL of static assets (defaults to
+	// BaseURL when empty).
+	AssetsBaseURL string
+	Year          int
 }
 
 // Dependencies are wired by the composition root.
@@ -36,9 +39,10 @@ func New(deps Dependencies) *Module {
 func (m *Module) RegisterHTTP(r chi.Router) {
 	web.RegisterRoutes(r, web.Deps{
 		Common: view.Common{
-			AppName: m.settings.AppName,
-			BaseURL: m.settings.BaseURL,
-			Year:    m.settings.Year,
+			AppName:       m.settings.AppName,
+			BaseURL:       m.settings.BaseURL,
+			AssetsBaseURL: m.settings.AssetsBaseURL,
+			Year:          m.settings.Year,
 		},
 	})
 }
