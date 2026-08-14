@@ -3,7 +3,7 @@ package web
 import (
 	"net/http"
 
-	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/web/templates"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/templates"
 	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
 )
 

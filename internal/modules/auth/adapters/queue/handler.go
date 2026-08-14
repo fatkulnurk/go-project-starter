@@ -8,9 +8,9 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/application/mailer"
 	q "github.com/fatkulnurk/go-project-starter/internal/application/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/application/sms"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/queue/templates"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/tasks"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/templates"
 )
 
 func sendVerificationEmail(m mailer.MailSender, common templates.Common) q.TaskHandler {

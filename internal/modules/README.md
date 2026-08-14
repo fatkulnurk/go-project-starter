@@ -12,13 +12,14 @@ internal/modules/<name>/
 ├── domain/            pure entities, value objects, repo interfaces, sentinels
 ├── application/       use cases: commands/, queries/ (+ module-local ports)
 ├── infrastructure/    repository implementations (database/sql)
+├── templates/         embedded message/page templates, split by channel
+│   ├── web/           HTML pages rendered by web/httpapi handlers
+│   ├── email/         email HTML + text (subject/body)
+│   └── sms/           SMS body text
 ├── adapters/
 │   ├── httpapi/       HTTP handlers + DTOs for JSON APIs (no business logic)
-│   │   └── templates/ embedded HTML pages rendered by these handlers
 │   ├── web/           HTTP handlers rendering HTML pages (non-JSON, e.g. homepage)
-│   │   └── templates/ embedded HTML pages rendered by these handlers
 │   └── queue/         background task handlers (if the module has any)
-│       └── templates/ embedded email/SMS message templates
 ├── module.go          `New(Dependencies) *Module` — composition inside module
 ├── api.go             `API` + `Service` — the public face other modules may use
 └── doc.go             package documentation
@@ -30,12 +31,11 @@ internal/modules/<name>/
 
 ### Content templates vs. platform layouts
 
-Each adapter that renders content keeps its own templates in an
-`adapters/<adapter>/templates/` subpackage: HTML pages under `httpapi/templates/`
-for JSON modules or `web/templates/` for page-rendering modules, email/SMS
-messages under `queue/templates/`. Those are the *what* — module-owned
-copy. The *how* — shared layouts — lives in `internal/platform` (`view` for
-pages, `mailer` for email) and is reused via `ParseFS`.
+Each module keeps its own content templates in a root `templates/` package,
+split by channel (`web/` for pages, `email/` for email HTML + text, `sms/` for
+SMS bodies). Those are the *what* — module-owned copy. The *how* — shared
+layouts — lives in `internal/platform` (`view` for pages, `mailer` for email)
+and is reused via `ParseFS`.
 
 ### Uniform skeleton
 

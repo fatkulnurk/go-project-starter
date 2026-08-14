@@ -2,7 +2,7 @@
 // plain text, SMS) from embedded Go templates. Email HTML is composed by
 // attaching this module's content templates to the shared layout owned by
 // internal/platform/mailer; text and SMS are rendered by dedicated text
-// templates.
+// templates. Channel templates live under email/ and sms/ subfolders.
 //
 // Templates are parsed once at startup via template.Must, so a syntax error
 // fails the process immediately instead of surfacing on first send.
@@ -12,15 +12,15 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"io"
 	"text/template"
 
 	htmltemplate "html/template"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/branding"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/mailer"
 )
 
-//go:embed *.html *.txt
+//go:embed email/*.html email/*.txt sms/*.txt
 var files embed.FS
 
 // Common is the branding embedded by every view model. It aliases the mailer
@@ -71,7 +71,7 @@ var emailTmpls = map[string]*htmltemplate.Template{
 
 // textTmpl carries every plain-text message and subject in one set (unique
 // definition names, no shared blocks).
-var textTmpl = template.Must(template.ParseFS(files, "*.txt"))
+var textTmpl = template.Must(template.ParseFS(files, "email/*.txt", "sms/*.txt"))
 
 // mustEmail parses the shared platform email layout, then attaches the given
 // content template from this module.
@@ -80,16 +80,16 @@ func mustEmail(name string) *htmltemplate.Template {
 	if err != nil {
 		panic(err)
 	}
-	return htmltemplate.Must(layout.ParseFS(files, name+".html"))
+	return htmltemplate.Must(layout.ParseFS(files, "email/"+name+".html"))
 }
 
 // Email renders subject, plain text and HTML for the named email template
 // (e.g. "email_verification"). data is the view model; it embeds Common.
 func Email(name string, data any) (subject, text, html string, err error) {
-	if subject, err = renderString(textTmpl, name+"_subject", data); err != nil {
+	if subject, err = branding.Render(textTmpl, name+"_subject", data); err != nil {
 		return "", "", "", err
 	}
-	if text, err = renderString(textTmpl, name+"_text", data); err != nil {
+	if text, err = branding.Render(textTmpl, name+"_text", data); err != nil {
 		return "", "", "", err
 	}
 	tmpl, ok := emailTmpls[name]
@@ -105,20 +105,5 @@ func Email(name string, data any) (subject, text, html string, err error) {
 
 // SMS renders the body of the named SMS template (e.g. "sms_verification").
 func SMS(name string, data any) (string, error) {
-	return renderString(textTmpl, name, data)
-}
-
-// renderString executes template named by tn with data and returns the output.
-func renderString(t templateExecutor, tn string, data any) (string, error) {
-	var buf bytes.Buffer
-	if err := t.ExecuteTemplate(&buf, tn, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-// templateExecutor is satisfied by both html/template.Template and
-// text/template.Template.
-type templateExecutor interface {
-	ExecuteTemplate(w io.Writer, name string, data any) error
+	return branding.Render(textTmpl, name, data)
 }

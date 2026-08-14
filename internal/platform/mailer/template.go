@@ -4,6 +4,8 @@ import (
 	"embed"
 
 	htmltemplate "html/template"
+
+	"github.com/fatkulnurk/go-project-starter/internal/application/branding"
 )
 
 //go:embed layout.html
@@ -11,14 +13,7 @@ var layoutFS embed.FS
 
 // Common carries branding shared by the email layout. Module email templates
 // embed it so the layout can render the brand header and footer.
-type Common struct {
-	AppName string
-	BaseURL string
-	// AssetsBaseURL is the absolute base URL of static assets (e.g. a CDN or
-	// the app's /assets mount). Used to reference logos/banners in email HTML.
-	AssetsBaseURL string
-	Year          int
-}
+type Common = branding.Common
 
 // NewEmailLayout parses the shared email layout into a template set that
 // defines the "layout" shell and a "content" block. Modules attach their own
