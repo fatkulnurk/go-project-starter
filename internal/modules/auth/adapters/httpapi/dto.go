@@ -19,8 +19,6 @@ const (
 	responseUser         = "user"
 	responseDevEmailCode = "dev_email_code"
 	responseDevPhoneCode = "dev_phone_code"
-	responseDevCode      = "dev_code"
-	responseDevLink      = "dev_link"
 	responseExpiresIn    = "expires_in"
 	responseAccessToken  = "access_token"
 	responseRefreshToken = "refresh_token"

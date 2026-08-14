@@ -24,9 +24,6 @@ func (h *handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{responseExpiresIn: int64(res.ExpiresIn.Seconds())}
-	if res.DevCode != "" {
-		body[responseDevCode] = res.DevCode
-	}
 	writeSuccess(w, http.StatusOK, body)
 }
 

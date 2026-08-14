@@ -9,6 +9,7 @@ import (
 	q "github.com/fatkulnurk/go-project-starter/internal/application/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/application/sms"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/queue/templates"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/tasks"
 )
 
@@ -47,55 +48,77 @@ func sendPhoneVerification(s sms.Sender, common templates.Common) q.TaskHandler 
 	}
 }
 
-func sendForgotPasswordEmail(m mailer.MailSender, common templates.Common) q.TaskHandler {
+func sendForgotPasswordEmail(m mailer.MailSender, common templates.Common, process *commands.ProcessForgotPassword) q.TaskHandler {
 	return func(ctx context.Context, payload []byte) error {
 		var p tasks.ForgotPasswordEmailPayload
 		if err := json.Unmarshal(payload, &p); err != nil {
 			return fmt.Errorf("%w: decode forgot-password email payload: %v", q.ErrPermanent, err)
 		}
+		res, err := process.Execute(ctx, p.Identifier)
+		if err != nil {
+			return err
+		}
+		if res.User == nil {
+			// Unknown identifier: deliver nothing, silently.
+			return nil
+		}
 		subject, text, html, err := templates.Email("email_forgot_password", templates.EmailForgotPasswordData{
 			Common: common,
-			Name:   p.Name,
-			Code:   p.Code,
+			Name:   res.User.Name,
+			Code:   res.Code,
 		})
 		if err != nil {
 			return fmt.Errorf("%w: render forgot-password email: %v", q.ErrPermanent, err)
 		}
-		return m.Send(ctx, mailer.Message{To: []string{p.To}, Subject: subject, Text: text, HTML: html})
+		return m.Send(ctx, mailer.Message{To: []string{*res.User.Email}, Subject: subject, Text: text, HTML: html})
 	}
 }
 
-func sendForgotPasswordSMS(s sms.Sender, common templates.Common) q.TaskHandler {
+func sendForgotPasswordSMS(s sms.Sender, common templates.Common, process *commands.ProcessForgotPassword) q.TaskHandler {
 	return func(ctx context.Context, payload []byte) error {
 		var p tasks.ForgotPasswordSMSPayload
 		if err := json.Unmarshal(payload, &p); err != nil {
 			return fmt.Errorf("%w: decode forgot-password sms payload: %v", q.ErrPermanent, err)
 		}
+		res, err := process.Execute(ctx, p.Identifier)
+		if err != nil {
+			return err
+		}
+		if res.User == nil {
+			return nil
+		}
 		body, err := templates.SMS("sms_forgot_password", templates.SMSForgotPasswordData{
 			Common: common,
-			Code:   p.Code,
+			Code:   res.Code,
 		})
 		if err != nil {
 			return fmt.Errorf("%w: render forgot-password sms: %v", q.ErrPermanent, err)
 		}
-		return s.Send(ctx, sms.Message{To: p.To, Body: body})
+		return s.Send(ctx, sms.Message{To: *res.User.Phone, Body: body})
 	}
 }
 
-func sendMagicLinkEmail(m mailer.MailSender, common templates.Common) q.TaskHandler {
+func sendMagicLinkEmail(m mailer.MailSender, common templates.Common, process *commands.ProcessMagicLink) q.TaskHandler {
 	return func(ctx context.Context, payload []byte) error {
 		var p tasks.MagicLinkEmailPayload
 		if err := json.Unmarshal(payload, &p); err != nil {
 			return fmt.Errorf("%w: decode magic link payload: %v", q.ErrPermanent, err)
 		}
+		res, err := process.Execute(ctx, p.Email)
+		if err != nil {
+			return err
+		}
+		if res.User == nil {
+			return nil
+		}
 		subject, text, html, err := templates.Email("email_magic_link", templates.EmailMagicLinkData{
 			Common: common,
-			Name:   p.Name,
-			Link:   p.Link,
+			Name:   res.User.Name,
+			Link:   res.Link,
 		})
 		if err != nil {
 			return fmt.Errorf("%w: render magic link email: %v", q.ErrPermanent, err)
 		}
-		return m.Send(ctx, mailer.Message{To: []string{p.To}, Subject: subject, Text: text, HTML: html})
+		return m.Send(ctx, mailer.Message{To: []string{*res.User.Email}, Subject: subject, Text: text, HTML: html})
 	}
 }

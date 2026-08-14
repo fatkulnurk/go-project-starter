@@ -78,6 +78,10 @@ type Module struct {
 	settings Settings
 	clock    clock.Clock
 	cache    cache.Cache
+	// processForgot and processMagic run in the worker: they resolve delivery
+	// requests to accounts and issue the reset code / magic link.
+	processForgot *commands.ProcessForgotPassword
+	processMagic  *commands.ProcessMagicLink
 }
 
 // New constructs the auth module.
@@ -94,15 +98,18 @@ func New(deps Dependencies) *Module {
 	forgotLimiter := commands.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:forgot")
 	magicLimiter := commands.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:magic")
 
+	processForgot := commands.NewProcessForgotPassword(users, codes, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Clock)
+	processMagic := commands.NewProcessMagicLink(users, codes, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Clock)
+
 	return &Module{
 		API: API{
 			Register:         commands.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
 			Login:            commands.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter),
-			MagicLinkRequest: commands.NewMagicLinkRequest(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Settings.DevMode, magicLimiter),
+			MagicLinkRequest: commands.NewMagicLinkRequest(deps.Enqueuer, deps.Settings.MagicLinkTTL, magicLimiter),
 			MagicLinkVerify:  commands.NewMagicLinkVerify(codes, users, issuer),
 			VerifyEmail:      commands.NewVerifyEmail(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
 			VerifyPhone:      commands.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			ForgotPassword:   commands.NewForgotPassword(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode, forgotLimiter),
+			ForgotPassword:   commands.NewForgotPassword(deps.Enqueuer, deps.Settings.OTPTTL, forgotLimiter),
 			ResetPassword:    commands.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
 			Refresh:          commands.NewRefresh(refreshTokens, users, issuer),
 			Logout:           commands.NewLogout(refreshTokens, deps.Auditor),
@@ -110,12 +117,14 @@ func New(deps Dependencies) *Module {
 			Profile:          queries.NewProfile(users, roles),
 			FindUserByEmail:  queries.NewFindUserByEmail(users),
 		},
-		authn:    &authenticator{tokens: deps.Tokens, users: users},
-		mailer:   deps.Mailer,
-		sms:      deps.SMS,
-		settings: deps.Settings,
-		clock:    deps.Clock,
-		cache:    deps.Cache,
+		authn:         &authenticator{tokens: deps.Tokens, users: users},
+		mailer:        deps.Mailer,
+		sms:           deps.SMS,
+		settings:      deps.Settings,
+		clock:         deps.Clock,
+		cache:         deps.Cache,
+		processForgot: processForgot,
+		processMagic:  processMagic,
 	}
 }
 
@@ -149,7 +158,7 @@ func (m *Module) RegisterHTTP(r chi.Router) {
 
 // RegisterQueue registers the module's task handlers on a worker.
 func (m *Module) RegisterQueue(r appaqueue.Registrar) {
-	queueadapter.Register(r, m.mailer, m.sms, queueadapterCommon(m.settings, m.clock))
+	queueadapter.Register(r, m.mailer, m.sms, queueadapterCommon(m.settings, m.clock), m.processForgot, m.processMagic)
 }
 
 // queueadapterCommon builds the branding injected into rendered messages.

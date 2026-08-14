@@ -5,11 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatkulnurk/go-project-starter/internal/application/otp"
 	"github.com/fatkulnurk/go-project-starter/internal/application/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/tasks"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
-	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
 
 // ForgotPasswordCommand requests a password-reset code for an email or phone.
@@ -18,28 +16,25 @@ type ForgotPasswordCommand struct {
 	IP         string
 }
 
-// ForgotPasswordResult reports the outcome; the code is only returned in dev
-// mode.
+// ForgotPasswordResult reports the outcome. It is identical whether or not the
+// account exists, so the response never reveals registration status. The actual
+// account lookup and code issuance happen in the worker.
 type ForgotPasswordResult struct {
-	DevCode   string
 	ExpiresIn time.Duration
 }
 
-// ForgotPassword issues a reset code and delivers it on the matching channel.
+// ForgotPassword always enqueues a reset-code delivery task and returns a
+// uniform success. The worker resolves the identifier to a user and skips the
+// send when the account does not exist.
 type ForgotPassword struct {
-	users     domain.UserRepository
-	codes     domain.VerificationCodeRepository
-	enqueuer  queue.Enqueuer
-	clock     clock.Clock
-	otpLength int
-	otpTTL    time.Duration
-	devMode   bool
-	limiter   *rateLimiter
+	enqueuer queue.Enqueuer
+	otpTTL   time.Duration
+	limiter  *rateLimiter
 }
 
 // NewForgotPassword builds the use case.
-func NewForgotPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, clk clock.Clock, otpLength int, otpTTL time.Duration, devMode bool, limiter *rateLimiter) *ForgotPassword {
-	return &ForgotPassword{users: users, codes: codes, enqueuer: enqueuer, clock: clk, otpLength: otpLength, otpTTL: otpTTL, devMode: devMode, limiter: limiter}
+func NewForgotPassword(enqueuer queue.Enqueuer, otpTTL time.Duration, limiter *rateLimiter) *ForgotPassword {
+	return &ForgotPassword{enqueuer: enqueuer, otpTTL: otpTTL, limiter: limiter}
 }
 
 // Execute runs the use case.
@@ -53,54 +48,22 @@ func (uc *ForgotPassword) Execute(ctx context.Context, cmd ForgotPasswordCommand
 			return nil, err
 		}
 	}
-	user, err := findByIdentifier(ctx, uc.users, identifier)
-	if err != nil {
-		return nil, err
-	}
-	if user == nil {
-		// No-op: return the same success shape as a real send so the response
-		// does not reveal whether the account exists. No code is issued and no
-		// email/SMS is enqueued.
-		return &ForgotPasswordResult{ExpiresIn: uc.otpTTL}, nil
-	}
 
-	channel := domain.ChannelPhone
-	isEmail := strings.Contains(identifier, "@")
-	if isEmail {
-		channel = domain.ChannelEmail
-	}
-
-	if err := uc.codes.InvalidateByUser(ctx, user.ID, domain.PurposeReset); err != nil {
-		return nil, err
-	}
-	code, err := otp.Generate(uc.otpLength)
-	if err != nil {
-		return nil, err
-	}
-	vc, err := domain.NewVerificationCode(user.ID, channel, domain.PurposeReset, code, uc.otpTTL, uc.clock.Now())
-	if err != nil {
-		return nil, err
-	}
-	if err := uc.codes.Save(ctx, vc); err != nil {
-		return nil, err
-	}
-
-	if isEmail {
-		err = tasks.EnqueueForgotPasswordEmail(ctx, uc.enqueuer, tasks.ForgotPasswordEmailPayload{
-			To: *user.Email, Name: user.Name, Code: code,
+	if strings.Contains(identifier, "@") {
+		err := tasks.EnqueueForgotPasswordEmail(ctx, uc.enqueuer, tasks.ForgotPasswordEmailPayload{
+			Identifier: identifier,
 		})
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		err = tasks.EnqueueForgotPasswordSMS(ctx, uc.enqueuer, tasks.ForgotPasswordSMSPayload{
-			To: *user.Phone, Code: code,
+		err := tasks.EnqueueForgotPasswordSMS(ctx, uc.enqueuer, tasks.ForgotPasswordSMSPayload{
+			Identifier: identifier,
 		})
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	res := &ForgotPasswordResult{ExpiresIn: uc.otpTTL}
-	if uc.devMode {
-		res.DevCode = code
-	}
-	return res, nil
+	return &ForgotPasswordResult{ExpiresIn: uc.otpTTL}, nil
 }

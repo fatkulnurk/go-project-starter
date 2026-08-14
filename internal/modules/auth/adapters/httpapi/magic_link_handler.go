@@ -24,9 +24,6 @@ func (h *handler) magicLinkRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{responseExpiresIn: int64(res.ExpiresIn.Seconds())}
-	if res.DevLink != "" {
-		body[responseDevLink] = res.DevLink
-	}
 	writeSuccess(w, http.StatusOK, body)
 }
 

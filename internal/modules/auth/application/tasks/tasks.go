@@ -35,24 +35,25 @@ type PhoneVerificationPayload struct {
 	Code string `json:"code"`
 }
 
-// ForgotPasswordEmailPayload carries a password reset code by email.
+// ForgotPasswordEmailPayload carries the identifier the worker resolves to a
+// user before issuing and sending a reset code by email. If the account does
+// not exist the worker skips delivery.
 type ForgotPasswordEmailPayload struct {
-	To   string `json:"to"`
-	Name string `json:"name"`
-	Code string `json:"code"`
+	Identifier string `json:"identifier"`
 }
 
-// ForgotPasswordSMSPayload carries a password reset code by SMS.
+// ForgotPasswordSMSPayload carries the identifier the worker resolves to a
+// user before issuing and sending a reset code by SMS. If the account does
+// not exist the worker skips delivery.
 type ForgotPasswordSMSPayload struct {
-	To   string `json:"to"`
-	Code string `json:"code"`
+	Identifier string `json:"identifier"`
 }
 
-// MagicLinkEmailPayload carries a magic login link by email.
+// MagicLinkEmailPayload carries the email the worker resolves to a user before
+// issuing and sending a magic login link. If the account does not exist the
+// worker skips delivery.
 type MagicLinkEmailPayload struct {
-	To   string `json:"to"`
-	Name string `json:"name"`
-	Link string `json:"link"`
+	Email string `json:"email"`
 }
 
 // EnqueueVerificationEmail pushes a verification-email task.
