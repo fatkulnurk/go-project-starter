@@ -173,9 +173,9 @@ func run() error {
 		}
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	authModule.RegisterHTTP(router)
+	authModule.RegisterAPI(router)
 	homepageModule.RegisterAPI(router)
-	rbacModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
+	rbacModule.RegisterAPI(router, authModule.Authenticator(), authorizer)
 
 	srv := platformhttp.NewServer(cfg.Port, router)
 

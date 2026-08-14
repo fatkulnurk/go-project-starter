@@ -13,11 +13,11 @@ internal/modules/<name>/
 ├── application/       use cases: commands/, queries/ (+ module-local ports)
 ├── infrastructure/    repository implementations (database/sql)
 ├── templates/         embedded message/page templates, split by channel
-│   ├── web/           HTML pages rendered by web/httpapi handlers
+│   ├── web/           HTML pages rendered by web/api handlers
 │   ├── email/         email HTML + text (subject/body)
 │   └── sms/           SMS body text
 ├── adapters/
-│   ├── httpapi/       HTTP handlers + DTOs for JSON APIs (no business logic)
+│   ├── api/           HTTP handlers + DTOs for JSON APIs (no business logic)
 │   ├── web/           HTTP handlers rendering HTML pages (non-JSON, e.g. homepage)
 │   └── queue/         background task handlers (if the module has any)
 ├── module.go          `New(Dependencies) *Module` — composition inside module
@@ -27,7 +27,7 @@ internal/modules/<name>/
 
 `module.go` is the composition root *inside* the module: it takes dependencies
 (ports) and builds the `API` (use cases) plus the module's exported helpers
-(`Authenticator()`, `RegisterHTTP()`, `RegisterQueue()`).
+(`Authenticator()`, `RegisterAPI()`, `RegisterWeb()`, `RegisterQueue()`).
 
 ### Content templates vs. platform layouts
 
@@ -58,7 +58,7 @@ infrastructure/ ──► domain/
 - **infrastructure**: implements the domain repository interfaces with
   `database/sql` (+ `internal/platform/database`). SQL uses `?` placeholders,
   portability handled by `database.Rebind`.
-- **adapters/httpapi**: only parses requests, calls one use case, renders the
+- **adapters/api**: only parses requests, calls one use case, renders the
   standardized response. Never contains business rules or SQL. Use `web/`
   instead when a module serves rendered HTML pages rather than a JSON API.
 
@@ -75,7 +75,7 @@ infrastructure/ ──► domain/
 1. Create the folder skeleton above.
 2. Write `domain/` first (entities + repository interfaces), then
    `application/` use cases against those interfaces.
-3. Implement repositories in `infrastructure/`, handlers in `adapters/httpapi/`.
+3. Implement repositories in `infrastructure/`, handlers in `adapters/api/`.
 4. Expose use cases through `api.go` and anything other modules need as a
    narrow `Service` interface.
 5. Wire it in `cmd/api/main.go` (and `cmd/worker/main.go` if it has tasks).

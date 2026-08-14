@@ -1,4 +1,4 @@
-package httpapi
+package api
 
 import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"

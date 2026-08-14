@@ -11,7 +11,7 @@ import (
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/cache"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/adapters/httpapi"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/adapters/api"
 	rbaccache "github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/queries"
@@ -121,9 +121,9 @@ func (m *Module) Bootstrap(ctx context.Context, opts BootstrapOptions) error {
 	return m.svc.AssignRole(ctx, userID, authorization.RoleSuperAdmin)
 }
 
-// RegisterHTTP mounts the module's admin routes behind auth + rbac.manage.
-func (m *Module) RegisterHTTP(r chi.Router, authn appauth.Authenticator, authz authorization.Authorizer) {
-	httpapi.RegisterRoutes(r, httpapi.Deps{
+// RegisterAPI mounts the module's admin API routes behind auth + rbac.manage.
+func (m *Module) RegisterAPI(r chi.Router, authn appauth.Authenticator, authz authorization.Authorizer) {
+	api.RegisterRoutes(r, api.Deps{
 		CreateRole:          m.API.CreateRole,
 		CreatePermission:    m.API.CreatePermission,
 		AssignRole:          m.API.AssignRole,

@@ -37,8 +37,8 @@ func New(deps Dependencies) *Module {
 	}
 }
 
-// RegisterHTTP mounts the homepage routes on the shared router.
-func (m *Module) RegisterHTTP(r chi.Router) {
+// RegisterWeb mounts the homepage HTML routes on the web router.
+func (m *Module) RegisterWeb(r chi.Router) {
 	web.RegisterRoutes(r, web.Deps{
 		Common: view.Common{
 			AppName:       m.settings.AppName,

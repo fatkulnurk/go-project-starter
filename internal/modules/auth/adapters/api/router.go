@@ -1,7 +1,7 @@
 // Package httpapi is the HTTP adapter of the auth module: it parses requests,
 // calls one application use case, and renders responses. No business logic or
 // SQL lives here.
-package httpapi
+package api
 
 import (
 	"context"

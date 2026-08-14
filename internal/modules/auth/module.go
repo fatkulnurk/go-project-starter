@@ -18,7 +18,7 @@ import (
 	appaqueue "github.com/fatkulnurk/go-project-starter/internal/application/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/application/sms"
 	"github.com/fatkulnurk/go-project-starter/internal/application/token"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/httpapi"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/api"
 	queueadapter "github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/queries"
@@ -132,9 +132,9 @@ func New(deps Dependencies) *Module {
 // shared HTTP middleware.
 func (m *Module) Authenticator() applicationauth.Authenticator { return m.authn }
 
-// RegisterHTTP mounts the module's routes on the shared router.
-func (m *Module) RegisterHTTP(r chi.Router) {
-	httpapi.RegisterRoutes(r, httpapi.Deps{
+// RegisterAPI mounts the module's JSON API routes on the shared router.
+func (m *Module) RegisterAPI(r chi.Router) {
+	api.RegisterRoutes(r, api.Deps{
 		Register:              m.API.Register,
 		Login:                 m.API.Login,
 		MagicLinkRequest:      m.API.MagicLinkRequest,

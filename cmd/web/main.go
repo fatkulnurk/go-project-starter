@@ -52,7 +52,7 @@ func run() error {
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	homepageModule.RegisterHTTP(router)
+	homepageModule.RegisterWeb(router)
 
 	srv := platformhttp.NewServer(cfg.WebPort, router)
 

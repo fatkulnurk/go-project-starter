@@ -1,7 +1,7 @@
 // Package httpapi is the HTTP adapter of the RBAC module: it parses requests,
 // calls one application use case, and renders the standardized response. All
 // routes require authentication and the rbac.manage permission.
-package httpapi
+package api
 
 import (
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
