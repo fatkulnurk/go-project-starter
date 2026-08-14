@@ -26,9 +26,8 @@ check: build vet test fmt
 	@echo "--- domain must stay pure (no sql/http/framework) ---"
 	@! rg -n "database/sql|net/http|go-chi|aws-sdk|asynq|go-redis" internal/modules -g '**/domain/**' || true
 	@echo "--- modules only import each other through package roots ---"
-	@! rg -n "internal/modules/(rbac|media)/(domain|application|infrastructure|adapters)" internal/modules/auth || true
-	@! rg -n "internal/modules/(auth|media)/(domain|application|infrastructure|adapters)" internal/modules/rbac || true
-	@! rg -n "internal/modules/(auth|rbac)/(domain|application|infrastructure|adapters)" internal/modules/media || true
+	@! rg -n "internal/modules/(rbac)/(domain|application|infrastructure|adapters)" internal/modules/auth || true
+	@! rg -n "internal/modules/(auth)/(domain|application|infrastructure|adapters)" internal/modules/rbac || true
 
 run-api:
 	go run ./cmd/api

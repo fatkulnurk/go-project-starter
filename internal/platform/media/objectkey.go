@@ -1,4 +1,7 @@
-package domain
+// Package media implements the application/media contract: metadata is
+// persisted in the media table and file bytes live behind the application
+// storage driver (local, s3).
+package media
 
 import (
 	"crypto/rand"
@@ -7,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatkulnurk/go-project-starter/internal/application/id"
+	appmedia "github.com/fatkulnurk/go-project-starter/internal/application/media"
 )
 
 // Storage key prefix for media objects.
@@ -16,25 +19,22 @@ const (
 	randTokenSize = 8
 )
 
-// newID returns a version-7 UUID string.
-func newID() string { return id.New() }
-
 // ObjectKey builds the storage key for a file:
 // media/{modelType}/{modelID}/{collection}/{base-<rand>}{ext}. It rejects
 // segments that could escape the media root (path traversal) or contain
 // separators.
 func ObjectKey(modelType, modelID, collection, name string) (string, error) {
 	if err := validateSegment(modelType); err != nil {
-		return "", err
+		return "", appmedia.ErrInvalid
 	}
 	if err := validateSegment(modelID); err != nil {
-		return "", err
+		return "", appmedia.ErrInvalid
 	}
 	if collection == "" {
-		collection = CollectionDefault
+		collection = appmedia.CollectionDefault
 	}
 	if err := validateSegment(collection); err != nil {
-		return "", err
+		return "", appmedia.ErrInvalid
 	}
 	return path.Join(keyPrefix, modelType, modelID, collection, uniqueFileName(name)), nil
 }
@@ -42,10 +42,10 @@ func ObjectKey(modelType, modelID, collection, name string) (string, error) {
 // validateSegment rejects empty, dot-relative, and separator-carrying values.
 func validateSegment(s string) error {
 	if s == "" {
-		return ErrInvalid
+		return appmedia.ErrInvalid
 	}
 	if s == "." || s == ".." || strings.Contains(s, "/") || strings.Contains(s, "\\") || strings.Contains(s, "\x00") {
-		return ErrInvalid
+		return appmedia.ErrInvalid
 	}
 	return nil
 }

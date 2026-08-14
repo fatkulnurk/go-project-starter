@@ -9,8 +9,8 @@ here — only dependency wiring.
 
 | Command     | Purpose                                                                  |
 | ----------- | ------------------------------------------------------------------------ |
-| `api`       | HTTP API server (port `APP_PORT`, default 8080). Mounts auth, media and  |
-|             | RBAC routes plus `/assets/*` static files.                               |
+| `api`       | HTTP API server (port `APP_PORT`, default 8080). Mounts auth and RBAC  |
+|             | routes plus `/assets/*` static files.                                 |
 | `web`       | Public web server (port `WEB_PORT`, default 8081). Serves the homepage   |
 |             | landing page and `/assets/*` static files.                               |
 | `worker`    | Queue worker. Processes async tasks enqueued by the API (email/SMS       |

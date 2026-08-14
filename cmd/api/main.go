@@ -13,9 +13,7 @@ import (
 	"time"
 
 	appid "github.com/fatkulnurk/go-project-starter/internal/application/id"
-	appstorage "github.com/fatkulnurk/go-project-starter/internal/application/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/media"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/cache"
@@ -29,7 +27,6 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/mailer"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/sms"
-	"github.com/fatkulnurk/go-project-starter/internal/platform/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/token"
 	_ "time/tzdata" // embed IANA timezone data so APP_TIMEZONE works anywhere
 )
@@ -61,18 +58,6 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-
-	store, err := storage.New(cfg.Storage)
-	if err != nil {
-		return err
-	}
-
-	// The local driver has no HTTP server, so it cannot generate public URLs;
-	// the media module then falls back to the API download endpoint.
-	var urlGen appstorage.URLGenerator
-	if u, ok := store.(appstorage.URLGenerator); ok {
-		urlGen = u
-	}
 
 	cacheClient, err := cache.New(cfg.Cache, db, cfg.Database.Driver)
 	if err != nil {
@@ -141,18 +126,6 @@ func run() error {
 		},
 	})
 
-	mediaModule := media.New(media.Dependencies{
-		DB:            db,
-		DBDriver:      cfg.Database.Driver,
-		Storage:       store,
-		URLGenerator:  urlGen,
-		BaseURL:       cfg.BaseURL,
-		Disk:          cfg.Storage.Driver,
-		Auditor:       auditor,
-		MaxUploadSize: cfg.Media.MaxUploadSize,
-		Location:      cfg.Location(),
-	})
-
 	// Bootstrap default roles/permissions and assign the super admin.
 	if err := rbacModule.Bootstrap(context.Background(), rbac.BootstrapOptions{
 		SuperAdminEmail: cfg.RBAC.SuperAdminEmail,
@@ -192,7 +165,6 @@ func run() error {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	authModule.RegisterHTTP(router)
-	mediaModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
 	rbacModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
 
 	srv := platformhttp.NewServer(cfg.Port, router)

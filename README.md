@@ -49,9 +49,13 @@ independently on its own port.
   - Versioned permission cache (redis/memory) — changes propagate within `RBAC_CACHE_TTL`
   - `platform/http.RequirePermission(authorizer, "rbac.manage")` middleware
   - Admin API to manage roles, permissions, and user assignments
-- **Media module** (`internal/modules/media`) — Laravel media-library-style
+- **Media library** — Laravel media-library-style cross-cutting capability
+  - Contract in `internal/application/media` (`media.Library`), implemented in
+    `internal/platform/media`
   - Files attached to any model/collection, metadata in the `media` table
-  - Upload / list / metadata / download / delete endpoints
+  - Callable from any module: `AddMedia`, `GetMedia`, `ListByModel`,
+    `RemoveMedia`, `URL` (backs onto `internal/application/storage` for signed
+    or direct object URLs)
 - **Queue** — hibiken/asynq (Redis). Emails/SMS are enqueued by the API and
   sent by a separate worker (`cmd/worker`).
 - **Mailer** — drivers: `log`, `smtp`, `ses` (Amazon SESv2). Supports text,
@@ -135,15 +139,9 @@ go run ./cmd/web      # optional — public homepage on WEB_PORT
 | POST   | `/api/v1/rbac/users/{userID}/permissions` | grant direct permission  |
 | DELETE | `/api/v1/rbac/users/{userID}/permissions` | revoke direct permission|
 
-### Media
-
-| Method | Path                            | Auth           | Description                  |
-|--------|---------------------------------|----------------|------------------------------|
-| POST   | `/api/v1/media`                 | Bearer + `media.manage` | multipart upload (`file`, `model_type`, `model_id`, `collection`) |
-| GET    | `/api/v1/media?model_type=&model_id=&collection=` | Bearer | list media for a model |
-| GET    | `/api/v1/media/{id}`            | Bearer         | media metadata               |
-| GET    | `/api/v1/media/{id}/download`   | Bearer         | file bytes (streamed)        |
-| DELETE | `/api/v1/media/{id}`            | Bearer + `media.manage` | delete media      |
+> The media library is a programmatic capability (see Features) — it has no
+> HTTP endpoints. Modules call `media.Library` directly; if you need to expose
+> it over HTTP, add a thin adapter in the composition root.
 
 To grant a user access to protected endpoints, use the RBAC API, e.g. assign
 the `super_admin` role, or set `RBAC_BOOTSTRAP_SUPER_ADMIN_EMAIL` before

@@ -7,8 +7,8 @@ nothing outside this repository may import it.
 
 ```text
 internal/
-├── application/   cross-cutting capabilities (contracts)
-├── modules/       business modules (auth, rbac, media, ...)
+├── application/   cross-cutting capabilities (contracts: auth, media, storage, ...)
+├── modules/       business modules (auth, rbac, ...)
 └── platform/      technical infrastructure (http, db, redis, ...)
 ```
 

@@ -17,6 +17,7 @@ must not import `internal/platform` or `internal/modules`.
 | `cache`         | cache contract (`Get`, `Set`, `Delete`, `Increment`, ...)      |
 | `hash`          | password hashing contract                                       |
 | `mailer`        | email contract (text, HTML, attachments)                       |
+| `media`         | media-library contract (`media.Library`, attach/read/remove/URL)|
 | `otp`           | one-time-passcode generation/validation helpers                |
 | `queue`         | enqueue + task registration contract (asynq)                   |
 | `sms`           | SMS contract                                                    |
