@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/apierr"
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/cache"
@@ -30,6 +31,7 @@ type Dependencies struct {
 	DBDriver string
 	Cache    cache.Cache
 	CacheTTL time.Duration
+	Auditor  audit.Auditor
 }
 
 // BootstrapOptions drives startup seeding and super admin promotion.
@@ -58,14 +60,14 @@ func New(deps Dependencies) *Module {
 		pcache = rbaccache.NewPermissionCache(deps.Cache, deps.CacheTTL)
 	}
 
-	createRole := commands.NewCreateRole(roles)
-	createPermission := commands.NewCreatePermission(permissions)
-	assignRole := commands.NewAssignRole(roles, access, pcache)
-	revokeRole := commands.NewRevokeRole(roles, access, pcache)
-	grantPermission := commands.NewGrantPermission(permissions, access, pcache)
-	revokePermission := commands.NewRevokePermission(permissions, access, pcache)
-	syncRolePermissions := commands.NewSyncRolePermissions(roles, permissions, pcache)
-	bootstrap := commands.NewBootstrap(roles, permissions, pcache)
+	createRole := commands.NewCreateRole(roles, deps.Auditor)
+	createPermission := commands.NewCreatePermission(permissions, deps.Auditor)
+	assignRole := commands.NewAssignRole(roles, access, pcache, deps.Auditor)
+	revokeRole := commands.NewRevokeRole(roles, access, pcache, deps.Auditor)
+	grantPermission := commands.NewGrantPermission(permissions, access, pcache, deps.Auditor)
+	revokePermission := commands.NewRevokePermission(permissions, access, pcache, deps.Auditor)
+	syncRolePermissions := commands.NewSyncRolePermissions(roles, permissions, pcache, deps.Auditor)
+	bootstrap := commands.NewBootstrap(roles, permissions, pcache, deps.Auditor)
 	getUser := queries.NewGetUser(access, pcache)
 
 	svc := &service{getUser: getUser, assignRole: assignRole}

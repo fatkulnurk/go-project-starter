@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	applicationauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/cache"
@@ -56,6 +57,7 @@ type Dependencies struct {
 	Hasher   hash.PasswordHasher
 	Clock    clock.Clock
 	RBAC     rbac.Service
+	Auditor  audit.Auditor
 	Settings Settings
 }
 
@@ -74,24 +76,26 @@ func New(deps Dependencies) *Module {
 	users := infrastructure.NewUserRepository(deps.DB, deps.DBDriver)
 	refreshTokens := infrastructure.NewRefreshTokenRepository(deps.DB, deps.DBDriver)
 	codes := infrastructure.NewVerificationCodeRepository(deps.DB, deps.DBDriver)
+	pending := infrastructure.NewPendingContactChangeRepository(deps.DB, deps.DBDriver)
 
 	roles := rbacAdapter{svc: deps.RBAC}
 
-	issuer := commands.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock)
+	issuer := commands.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Auditor, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock)
 	rateLimiter := commands.NewLoginRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow)
 
 	return &Module{
 		API: API{
-			Register:         commands.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
+			Register:         commands.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
 			Login:            commands.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter),
 			MagicLinkRequest: commands.NewMagicLinkRequest(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Settings.DevMode),
 			MagicLinkVerify:  commands.NewMagicLinkVerify(codes, users, issuer),
-			VerifyEmail:      commands.NewVerifyEmail(users, codes, deps.Clock, deps.Settings.OTPMaxAttempts),
-			VerifyPhone:      commands.NewVerifyPhone(users, codes, deps.Clock, deps.Settings.OTPMaxAttempts),
+			VerifyEmail:      commands.NewVerifyEmail(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
+			VerifyPhone:      commands.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
 			ForgotPassword:   commands.NewForgotPassword(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode),
-			ResetPassword:    commands.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Clock, deps.Settings.OTPMaxAttempts),
+			ResetPassword:    commands.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
 			Refresh:          commands.NewRefresh(refreshTokens, users, issuer),
-			Logout:           commands.NewLogout(refreshTokens),
+			Logout:           commands.NewLogout(refreshTokens, deps.Auditor),
+			UpdateProfile:    commands.NewUpdateProfile(users, codes, pending, deps.Enqueuer, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode),
 			Profile:          queries.NewProfile(users, roles),
 			FindUserByEmail:  queries.NewFindUserByEmail(users),
 		},
@@ -120,6 +124,7 @@ func (m *Module) RegisterHTTP(r chi.Router) {
 		ResetPassword:    m.API.ResetPassword,
 		Refresh:          m.API.Refresh,
 		Logout:           m.API.Logout,
+		UpdateProfile:    m.API.UpdateProfile,
 		Profile:          m.API.Profile,
 		FindUserByEmail:  m.API.FindUserByEmail,
 		Authenticator:    m.authn,

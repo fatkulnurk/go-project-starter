@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
@@ -14,17 +15,21 @@ type VerifyPhoneCommand struct {
 	Code  string
 }
 
-// VerifyPhone marks a phone as verified when the OTP matches.
+// VerifyPhone confirms a phone. It applies a pending contact change when the
+// number is waiting for re-verification; otherwise it verifies the phone
+// already stored on the account (registration flow).
 type VerifyPhone struct {
 	users          domain.UserRepository
 	codes          domain.VerificationCodeRepository
+	pending        domain.PendingContactChangeRepository
+	auditor        audit.Auditor
 	clock          clock.Clock
 	otpMaxAttempts int
 }
 
 // NewVerifyPhone builds the use case.
-func NewVerifyPhone(users domain.UserRepository, codes domain.VerificationCodeRepository, clk clock.Clock, otpMaxAttempts int) *VerifyPhone {
-	return &VerifyPhone{users: users, codes: codes, clock: clk, otpMaxAttempts: otpMaxAttempts}
+func NewVerifyPhone(users domain.UserRepository, codes domain.VerificationCodeRepository, pending domain.PendingContactChangeRepository, auditor audit.Auditor, clk clock.Clock, otpMaxAttempts int) *VerifyPhone {
+	return &VerifyPhone{users: users, codes: codes, pending: pending, auditor: auditor, clock: clk, otpMaxAttempts: otpMaxAttempts}
 }
 
 // Execute runs the use case. It is idempotent for already-verified phones.
@@ -33,6 +38,13 @@ func (uc *VerifyPhone) Execute(ctx context.Context, cmd VerifyPhoneCommand) erro
 	if phone == "" || cmd.Code == "" {
 		return domain.ErrInvalid
 	}
+
+	if pending, err := uc.pending.FindPendingByNewValue(ctx, domain.ChannelPhone, phone); err != nil {
+		return err
+	} else if pending != nil {
+		return uc.applyPending(ctx, pending, phone, cmd.Code)
+	}
+
 	user, err := uc.users.FindByPhone(ctx, phone)
 	if err != nil {
 		return err
@@ -51,5 +63,62 @@ func (uc *VerifyPhone) Execute(ctx context.Context, cmd VerifyPhoneCommand) erro
 		return err
 	}
 	user.VerifyPhone(uc.clock.Now())
-	return uc.users.Update(ctx, user)
+	if err := uc.users.Update(ctx, user); err != nil {
+		return err
+	}
+	uc.audit(ctx, "users", user.ID, audit.ActionUpdated,
+		map[string]any{"phone_verified": false},
+		map[string]any{"phone_verified": true},
+	)
+	return nil
+}
+
+// applyPending confirms the OTP for a pending contact change and applies the
+// new value to the user.
+func (uc *VerifyPhone) applyPending(ctx context.Context, pending *domain.PendingContactChange, phone, code string) error {
+	user, err := uc.users.FindByID(ctx, pending.UserID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return domain.ErrNotFound
+	}
+	vc, err := uc.codes.FindLatestActive(ctx, user.ID, domain.PurposeVerify, domain.ChannelPhone)
+	if err != nil {
+		return err
+	}
+	if err := validateCode(ctx, uc.codes, vc, code, uc.otpMaxAttempts); err != nil {
+		return err
+	}
+	user.SetPhone(phone, uc.clock.Now())
+	user.VerifyPhone(uc.clock.Now())
+	if err := uc.users.Update(ctx, user); err != nil {
+		return err
+	}
+	if err := uc.pending.MarkApplied(ctx, pending.ID, uc.clock.Now()); err != nil {
+		return err
+	}
+	uc.audit(ctx, "pending_contact_changes", pending.ID, audit.ActionUpdated,
+		map[string]any{"status": string(domain.PendingStatusPending)},
+		map[string]any{"status": string(domain.PendingStatusApplied)},
+	)
+	uc.audit(ctx, "users", user.ID, audit.ActionUpdated,
+		map[string]any{"phone": pending.OldValue, "phone_verified": false},
+		map[string]any{"phone": phone, "phone_verified": true},
+	)
+	return nil
+}
+
+func (uc *VerifyPhone) audit(ctx context.Context, subjectType, subjectID string, action audit.Action, oldValues, newValues map[string]any) {
+	if uc.auditor == nil {
+		return
+	}
+	_ = uc.auditor.Record(ctx, audit.Entry{
+		SubjectType: subjectType,
+		SubjectID:   subjectID,
+		Action:      action,
+		OldValues:   oldValues,
+		NewValues:   newValues,
+		Actor:       audit.ActorFrom(ctx),
+	})
 }

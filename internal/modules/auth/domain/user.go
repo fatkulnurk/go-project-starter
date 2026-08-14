@@ -95,5 +95,29 @@ func (u *User) SetPasswordHash(hash string, now time.Time) {
 	u.UpdatedAt = now.UTC()
 }
 
+// SetName updates the display name.
+func (u *User) SetName(name string, now time.Time) {
+	u.Name = strings.TrimSpace(name)
+	u.UpdatedAt = now.UTC()
+}
+
+// SetEmail replaces the email address and clears its verification so the new
+// address must be verified again before it counts as verified.
+func (u *User) SetEmail(email string, now time.Time) {
+	v := strings.ToLower(strings.TrimSpace(email))
+	u.Email = &v
+	u.EmailVerifiedAt = nil
+	u.UpdatedAt = now.UTC()
+}
+
+// SetPhone replaces the phone number and clears its verification so the new
+// number must be verified again before it counts as verified.
+func (u *User) SetPhone(phone string, now time.Time) {
+	v := strings.TrimSpace(phone)
+	u.Phone = &v
+	u.PhoneVerifiedAt = nil
+	u.UpdatedAt = now.UTC()
+}
+
 // IsSuspended reports whether the account is locked.
 func (u *User) IsSuspended() bool { return u.Status == UserStatusSuspended }

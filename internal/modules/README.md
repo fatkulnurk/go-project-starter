@@ -13,7 +13,9 @@ internal/modules/<name>/
 ├── application/       use cases: commands/, queries/ (+ module-local ports)
 ├── infrastructure/    repository implementations (database/sql)
 ├── adapters/
-│   ├── httpapi/       HTTP handlers + DTOs (no business logic)
+│   ├── httpapi/       HTTP handlers + DTOs for JSON APIs (no business logic)
+│   │   └── templates/ embedded HTML pages rendered by these handlers
+│   ├── web/           HTTP handlers rendering HTML pages (non-JSON, e.g. homepage)
 │   │   └── templates/ embedded HTML pages rendered by these handlers
 │   └── queue/         background task handlers (if the module has any)
 │       └── templates/ embedded email/SMS message templates
@@ -29,8 +31,9 @@ internal/modules/<name>/
 ### Content templates vs. platform layouts
 
 Each adapter that renders content keeps its own templates in an
-`adapters/<adapter>/templates/` subpackage: HTML pages under `httpapi/templates/`,
-email/SMS messages under `queue/templates/`. Those are the *what* — module-owned
+`adapters/<adapter>/templates/` subpackage: HTML pages under `httpapi/templates/`
+for JSON modules or `web/templates/` for page-rendering modules, email/SMS
+messages under `queue/templates/`. Those are the *what* — module-owned
 copy. The *how* — shared layouts — lives in `internal/platform` (`view` for
 pages, `mailer` for email) and is reused via `ParseFS`.
 
@@ -56,7 +59,8 @@ infrastructure/ ──► domain/
   `database/sql` (+ `internal/platform/database`). SQL uses `?` placeholders,
   portability handled by `database.Rebind`.
 - **adapters/httpapi**: only parses requests, calls one use case, renders the
-  standardized response. Never contains business rules or SQL.
+  standardized response. Never contains business rules or SQL. Use `web/`
+  instead when a module serves rendered HTML pages rather than a JSON API.
 
 ## Rules between modules
 

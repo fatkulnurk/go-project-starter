@@ -3,6 +3,7 @@ package media
 import (
 	"database/sql"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/storage"
@@ -20,6 +21,7 @@ type Dependencies struct {
 	DBDriver string
 	Storage  storage.Storage
 	Disk     string
+	Auditor  audit.Auditor
 }
 
 // Module wires the media use cases and their adapters.
@@ -32,8 +34,8 @@ func New(deps Dependencies) *Module {
 	repo := infrastructure.NewMediaRepository(deps.DB, deps.DBDriver)
 	return &Module{
 		API: API{
-			AddMedia:    commands.NewAddMedia(repo, deps.Storage, deps.Disk, clock.Real{}),
-			RemoveMedia: commands.NewRemoveMedia(repo, deps.Storage),
+			AddMedia:    commands.NewAddMedia(repo, deps.Storage, deps.Disk, deps.Auditor, clock.Real{}),
+			RemoveMedia: commands.NewRemoveMedia(repo, deps.Storage, deps.Auditor),
 			GetMedia:    queries.NewGetMedia(repo, deps.Storage),
 			ListByModel: queries.NewListByModel(repo),
 		},

@@ -16,6 +16,7 @@ const (
 	responseLoggedOut    = "logged_out"
 	responseReset        = "reset"
 	responseUserID       = "user_id"
+	responseUser         = "user"
 	responseDevEmailCode = "dev_email_code"
 	responseDevPhoneCode = "dev_phone_code"
 	responseDevCode      = "dev_code"

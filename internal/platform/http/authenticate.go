@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 )
 
@@ -23,7 +24,16 @@ func Authenticate(authenticator appauth.Authenticator) func(http.Handler) http.H
 				writeUnauthenticated(w)
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(appauth.WithIdentity(r.Context(), id)))
+			ctx := appauth.WithIdentity(r.Context(), id)
+			if actor := audit.ActorFrom(ctx); actor.Type == audit.ActorSystem {
+				ctx = audit.WithActor(ctx, audit.Actor{
+					Type:      audit.ActorUser,
+					ID:        id.UserID,
+					IPAddress: actor.IPAddress,
+					UserAgent: actor.UserAgent,
+				})
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

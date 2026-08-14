@@ -24,6 +24,7 @@ driver per environment; modules only ever see the interface.
 | `queue`             | asynq client/server glue behind `queue.Enqueuer`                   |
 | `sms`               | `sms.Sender` implementations: `log`, `twilio`                      |
 | `storage`           | `storage.Storage` implementations: `local`, `s3` + factory         |
+| `audit`             | `audit.Auditor` implementation: `SQLAuditor` (writes `audit_logs`)  |
 | `view`              | shared base HTML layout (`NewLayout`) for browser pages            |
 
 ## What belongs here

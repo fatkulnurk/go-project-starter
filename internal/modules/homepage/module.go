@@ -1,7 +1,7 @@
 package homepage
 
 import (
-	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/httpapi"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/web"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/view"
 	"github.com/go-chi/chi/v5"
 )
@@ -34,7 +34,7 @@ func New(deps Dependencies) *Module {
 
 // RegisterHTTP mounts the homepage routes on the shared router.
 func (m *Module) RegisterHTTP(r chi.Router) {
-	httpapi.RegisterRoutes(r, httpapi.Deps{
+	web.RegisterRoutes(r, web.Deps{
 		Common: view.Common{
 			AppName: m.settings.AppName,
 			BaseURL: m.settings.BaseURL,

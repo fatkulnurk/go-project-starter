@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // UserRepository persists users.
 type UserRepository interface {
@@ -32,4 +35,14 @@ type VerificationCodeRepository interface {
 	IncrementAttempts(ctx context.Context, id string, attempts int) error
 	// InvalidateByUser marks every active code of a user/purpose as consumed.
 	InvalidateByUser(ctx context.Context, userID string, purpose Purpose) error
+}
+
+// PendingContactChangeRepository persists pending email/phone changes.
+type PendingContactChangeRepository interface {
+	Save(ctx context.Context, p *PendingContactChange) error
+	// FindPendingByNewValue returns the pending change for a channel whose new
+	// value matches. Returns nil, nil when none exists.
+	FindPendingByNewValue(ctx context.Context, channel Channel, newValue string) (*PendingContactChange, error)
+	// MarkApplied flips a pending change to applied.
+	MarkApplied(ctx context.Context, id string, appliedAt time.Time) error
 }

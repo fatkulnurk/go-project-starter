@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/application/hash"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
@@ -22,13 +23,14 @@ type ResetPassword struct {
 	codes          domain.VerificationCodeRepository
 	refreshTokens  domain.RefreshTokenRepository
 	hasher         hash.PasswordHasher
+	auditor        audit.Auditor
 	clock          clock.Clock
 	otpMaxAttempts int
 }
 
 // NewResetPassword builds the use case.
-func NewResetPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, refreshTokens domain.RefreshTokenRepository, hasher hash.PasswordHasher, clk clock.Clock, otpMaxAttempts int) *ResetPassword {
-	return &ResetPassword{users: users, codes: codes, refreshTokens: refreshTokens, hasher: hasher, clock: clk, otpMaxAttempts: otpMaxAttempts}
+func NewResetPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, refreshTokens domain.RefreshTokenRepository, hasher hash.PasswordHasher, auditor audit.Auditor, clk clock.Clock, otpMaxAttempts int) *ResetPassword {
+	return &ResetPassword{users: users, codes: codes, refreshTokens: refreshTokens, hasher: hasher, auditor: auditor, clock: clk, otpMaxAttempts: otpMaxAttempts}
 }
 
 // Execute runs the use case.
@@ -64,6 +66,17 @@ func (uc *ResetPassword) Execute(ctx context.Context, cmd ResetPasswordCommand) 
 	user.SetPasswordHash(newHash, uc.clock.Now())
 	if err := uc.users.Update(ctx, user); err != nil {
 		return err
+	}
+	if uc.auditor != nil {
+		// OldValues intentionally omitted: the previous password hash must not
+		// be stored in the audit trail.
+		_ = uc.auditor.Record(ctx, audit.Entry{
+			SubjectType: "users",
+			SubjectID:   user.ID,
+			Action:      audit.ActionUpdated,
+			NewValues:   map[string]any{"password": true},
+			Actor:       audit.ActorFrom(ctx),
+		})
 	}
 	return uc.refreshTokens.RevokeByUserID(ctx, user.ID)
 }

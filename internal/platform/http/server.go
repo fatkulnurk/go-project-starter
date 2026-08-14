@@ -16,6 +16,7 @@ func NewRouter() chi.Router {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 	r.Use(LoggerMiddleware)
+	r.Use(AuditActor)
 	r.Use(middleware.Timeout(30 * time.Second))
 	return r
 }

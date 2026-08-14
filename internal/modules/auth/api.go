@@ -18,6 +18,7 @@ type API struct {
 	ResetPassword    *commands.ResetPassword
 	Refresh          *commands.Refresh
 	Logout           *commands.Logout
+	UpdateProfile    *commands.UpdateProfile
 	Profile          *queries.Profile
 	FindUserByEmail  *queries.FindUserByEmail
 }

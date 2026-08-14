@@ -16,6 +16,7 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
+	"github.com/fatkulnurk/go-project-starter/internal/platform/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
@@ -84,6 +85,7 @@ func run() error {
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret)
 	hasher := hash.NewHasher(0)
+	auditor := audit.New(db, cfg.Database.Driver)
 
 	// --- modules ------------------------------------------------------------
 	rbacModule := rbac.New(rbac.Dependencies{
@@ -91,6 +93,7 @@ func run() error {
 		DBDriver: cfg.Database.Driver,
 		Cache:    cacheClient,
 		CacheTTL: cfg.RBAC.PermissionCacheTTL,
+		Auditor:  auditor,
 	})
 
 	authModule := auth.New(auth.Dependencies{
@@ -104,6 +107,7 @@ func run() error {
 		Hasher:   hasher,
 		Clock:    clk,
 		RBAC:     rbacModule.Service(),
+		Auditor:  auditor,
 		Settings: auth.Settings{
 			AccessTokenTTL:       cfg.Auth.AccessTokenTTL,
 			RefreshTokenTTL:      cfg.Auth.RefreshTokenTTL,
@@ -125,6 +129,7 @@ func run() error {
 		DBDriver: cfg.Database.Driver,
 		Storage:  store,
 		Disk:     cfg.Storage.Driver,
+		Auditor:  auditor,
 	})
 
 	homepageModule := homepage.New(homepage.Dependencies{

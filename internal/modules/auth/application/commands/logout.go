@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 )
 
@@ -15,11 +16,12 @@ type LogoutCommand struct {
 // Logout revokes the presented refresh token.
 type Logout struct {
 	refreshTokens domain.RefreshTokenRepository
+	auditor       audit.Auditor
 }
 
 // NewLogout builds the use case.
-func NewLogout(refreshTokens domain.RefreshTokenRepository) *Logout {
-	return &Logout{refreshTokens: refreshTokens}
+func NewLogout(refreshTokens domain.RefreshTokenRepository, auditor audit.Auditor) *Logout {
+	return &Logout{refreshTokens: refreshTokens, auditor: auditor}
 }
 
 // Execute runs the use case. A missing or already-revoked token is not an
@@ -35,5 +37,17 @@ func (uc *Logout) Execute(ctx context.Context, cmd LogoutCommand) error {
 	if t == nil || t.UserID != cmd.UserID || t.IsRevoked() {
 		return nil
 	}
-	return uc.refreshTokens.RevokeByID(ctx, t.ID)
+	if err := uc.refreshTokens.RevokeByID(ctx, t.ID); err != nil {
+		return err
+	}
+	if uc.auditor != nil {
+		_ = uc.auditor.Record(ctx, audit.Entry{
+			SubjectType: "refresh_tokens",
+			SubjectID:   t.ID,
+			Action:      audit.ActionDeleted,
+			OldValues:   map[string]any{"user_id": t.UserID},
+			Actor:       audit.ActorFrom(ctx),
+		})
+	}
+	return nil
 }

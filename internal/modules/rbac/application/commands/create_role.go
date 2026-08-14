@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
@@ -14,12 +15,13 @@ type CreateRoleCommand struct {
 
 // CreateRole persists a new role.
 type CreateRole struct {
-	roles domain.RoleRepository
+	roles   domain.RoleRepository
+	auditor audit.Auditor
 }
 
 // NewCreateRole builds the use case.
-func NewCreateRole(roles domain.RoleRepository) *CreateRole {
-	return &CreateRole{roles: roles}
+func NewCreateRole(roles domain.RoleRepository, auditor audit.Auditor) *CreateRole {
+	return &CreateRole{roles: roles, auditor: auditor}
 }
 
 // Execute runs the use case.
@@ -39,5 +41,17 @@ func (uc *CreateRole) Execute(ctx context.Context, cmd CreateRoleCommand) error 
 	if err != nil {
 		return err
 	}
-	return uc.roles.Save(ctx, role)
+	if err := uc.roles.Save(ctx, role); err != nil {
+		return err
+	}
+	if uc.auditor != nil {
+		_ = uc.auditor.Record(ctx, audit.Entry{
+			SubjectType: "roles",
+			SubjectID:   role.ID,
+			Action:      audit.ActionCreated,
+			NewValues:   map[string]any{"name": role.Name},
+			Actor:       audit.ActorFrom(ctx),
+		})
+	}
+	return nil
 }

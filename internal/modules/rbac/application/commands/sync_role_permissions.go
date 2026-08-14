@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
@@ -19,11 +20,12 @@ type SyncRolePermissions struct {
 	roles       domain.RoleRepository
 	permissions domain.PermissionRepository
 	bumper      CacheBumper
+	audit       audit.Auditor
 }
 
 // NewSyncRolePermissions builds the use case.
-func NewSyncRolePermissions(roles domain.RoleRepository, permissions domain.PermissionRepository, bumper CacheBumper) *SyncRolePermissions {
-	return &SyncRolePermissions{roles: roles, permissions: permissions, bumper: bumper}
+func NewSyncRolePermissions(roles domain.RoleRepository, permissions domain.PermissionRepository, bumper CacheBumper, auditor audit.Auditor) *SyncRolePermissions {
+	return &SyncRolePermissions{roles: roles, permissions: permissions, bumper: bumper, audit: auditor}
 }
 
 // Execute runs the use case.
@@ -36,7 +38,12 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 		return domain.ErrNotFound
 	}
 
+	oldNames, err := uc.roles.PermissionsFor(ctx, role.ID)
+	if err != nil {
+		return err
+	}
 	var ids []string
+	var newNames []string
 	for _, raw := range cmd.Permissions {
 		name := strings.TrimSpace(raw)
 		if name == "" {
@@ -56,9 +63,23 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 			}
 		}
 		ids = append(ids, perm.ID)
+		newNames = append(newNames, perm.Name)
 	}
 	if err := uc.roles.SetPermissions(ctx, role.ID, ids); err != nil {
 		return err
 	}
-	return bump(ctx, uc.bumper)
+	if err := bump(ctx, uc.bumper); err != nil {
+		return err
+	}
+	if uc.audit != nil {
+		_ = uc.audit.Record(ctx, audit.Entry{
+			SubjectType: "role_permissions",
+			SubjectID:   role.ID,
+			Action:      audit.ActionUpdated,
+			OldValues:   map[string]any{"role": role.Name, "permissions": oldNames},
+			NewValues:   map[string]any{"role": role.Name, "permissions": newNames},
+			Actor:       audit.ActorFrom(ctx),
+		})
+	}
+	return nil
 }

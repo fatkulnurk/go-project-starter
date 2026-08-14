@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/application/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
@@ -27,12 +28,13 @@ type AddMedia struct {
 	media   domain.MediaRepository
 	storage storage.Storage
 	disk    string
+	auditor audit.Auditor
 	clock   clock.Clock
 }
 
 // NewAddMedia builds the use case.
-func NewAddMedia(media domain.MediaRepository, storage storage.Storage, disk string, clk clock.Clock) *AddMedia {
-	return &AddMedia{media: media, storage: storage, disk: disk, clock: clk}
+func NewAddMedia(media domain.MediaRepository, storage storage.Storage, disk string, auditor audit.Auditor, clk clock.Clock) *AddMedia {
+	return &AddMedia{media: media, storage: storage, disk: disk, auditor: auditor, clock: clk}
 }
 
 // Execute runs the use case.
@@ -50,6 +52,21 @@ func (uc *AddMedia) Execute(ctx context.Context, cmd AddMediaCommand) (*domain.M
 	if err := uc.media.Save(ctx, m); err != nil {
 		_ = uc.storage.Delete(ctx, key)
 		return nil, err
+	}
+	if uc.auditor != nil {
+		_ = uc.auditor.Record(ctx, audit.Entry{
+			SubjectType: cmd.ModelType,
+			SubjectID:   cmd.ModelID,
+			Action:      audit.ActionCreated,
+			NewValues: map[string]any{
+				"media_id": m.ID,
+				"name":     m.Name,
+				"mime":     m.MimeType,
+				"size":     m.Size,
+				"disk":     m.Disk,
+			},
+			Actor: audit.ActorFrom(ctx),
+		})
 	}
 	return m, nil
 }

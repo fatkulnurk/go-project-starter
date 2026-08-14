@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/application/token"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/ports"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
@@ -23,6 +24,7 @@ type TokenIssuer struct {
 	tokens        token.Manager
 	refreshTokens domain.RefreshTokenRepository
 	roles         ports.Roles
+	auditor       audit.Auditor
 	accessTTL     time.Duration
 	refreshTTL    time.Duration
 	clock         clock.Clock
@@ -30,8 +32,8 @@ type TokenIssuer struct {
 
 // NewTokenIssuer builds the shared issuer. roles may be nil when RBAC is not
 // wired; the access token then carries no roles.
-func NewTokenIssuer(tokens token.Manager, refreshTokens domain.RefreshTokenRepository, roles ports.Roles, accessTTL, refreshTTL time.Duration, clk clock.Clock) *TokenIssuer {
-	return &TokenIssuer{tokens: tokens, refreshTokens: refreshTokens, roles: roles, accessTTL: accessTTL, refreshTTL: refreshTTL, clock: clk}
+func NewTokenIssuer(tokens token.Manager, refreshTokens domain.RefreshTokenRepository, roles ports.Roles, auditor audit.Auditor, accessTTL, refreshTTL time.Duration, clk clock.Clock) *TokenIssuer {
+	return &TokenIssuer{tokens: tokens, refreshTokens: refreshTokens, roles: roles, auditor: auditor, accessTTL: accessTTL, refreshTTL: refreshTTL, clock: clk}
 }
 
 // Issue mints a fresh credential pair for userID and stores the refresh token.
@@ -52,6 +54,15 @@ func (i *TokenIssuer) Issue(ctx context.Context, userID string) (*TokenResult, e
 	rt := domain.NewRefreshToken(userID, raw, i.refreshTTL, i.clock.Now())
 	if err := i.refreshTokens.Save(ctx, rt); err != nil {
 		return nil, err
+	}
+	if i.auditor != nil {
+		_ = i.auditor.Record(ctx, audit.Entry{
+			SubjectType: "refresh_tokens",
+			SubjectID:   rt.ID,
+			Action:      audit.ActionCreated,
+			NewValues:   map[string]any{"user_id": userID},
+			Actor:       audit.ActorFrom(ctx),
+		})
 	}
 	return &TokenResult{AccessToken: access, RefreshToken: raw, ExpiresIn: i.accessTTL}, nil
 }

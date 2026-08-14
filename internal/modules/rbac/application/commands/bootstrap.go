@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
@@ -19,11 +20,12 @@ type Bootstrap struct {
 	roles       domain.RoleRepository
 	permissions domain.PermissionRepository
 	bumper      CacheBumper
+	audit       audit.Auditor
 }
 
 // NewBootstrap builds the use case.
-func NewBootstrap(roles domain.RoleRepository, permissions domain.PermissionRepository, bumper CacheBumper) *Bootstrap {
-	return &Bootstrap{roles: roles, permissions: permissions, bumper: bumper}
+func NewBootstrap(roles domain.RoleRepository, permissions domain.PermissionRepository, bumper CacheBumper, auditor audit.Auditor) *Bootstrap {
+	return &Bootstrap{roles: roles, permissions: permissions, bumper: bumper, audit: auditor}
 }
 
 // Execute runs the use case.
@@ -56,7 +58,19 @@ func (uc *Bootstrap) ensurePermission(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	return uc.permissions.Save(ctx, perm)
+	if err := uc.permissions.Save(ctx, perm); err != nil {
+		return err
+	}
+	if uc.audit != nil {
+		_ = uc.audit.Record(ctx, audit.Entry{
+			SubjectType: "permissions",
+			SubjectID:   perm.ID,
+			Action:      audit.ActionCreated,
+			NewValues:   map[string]any{"name": perm.Name},
+			Actor:       audit.ActorFrom(ctx),
+		})
+	}
+	return nil
 }
 
 func (uc *Bootstrap) ensureRole(ctx context.Context, name string) error {
@@ -74,5 +88,17 @@ func (uc *Bootstrap) ensureRole(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	return uc.roles.Save(ctx, role)
+	if err := uc.roles.Save(ctx, role); err != nil {
+		return err
+	}
+	if uc.audit != nil {
+		_ = uc.audit.Record(ctx, audit.Entry{
+			SubjectType: "roles",
+			SubjectID:   role.ID,
+			Action:      audit.ActionCreated,
+			NewValues:   map[string]any{"name": role.Name},
+			Actor:       audit.ActorFrom(ctx),
+		})
+	}
+	return nil
 }

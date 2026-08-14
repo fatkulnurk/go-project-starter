@@ -1,9 +1,9 @@
-package httpapi
+package web
 
 import (
 	"net/http"
 
-	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/httpapi/templates"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/web/templates"
 	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
 )
 

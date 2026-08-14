@@ -1,7 +1,7 @@
-// Package httpapi is the HTTP adapter of the homepage module: it renders the
+// Package web is the web adapter of the homepage module: it renders the
 // public landing page at / from the platform base view layout. No business
 // logic or SQL lives here.
-package httpapi
+package web
 
 import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/view"

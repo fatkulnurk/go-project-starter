@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
@@ -18,11 +19,12 @@ type GrantPermission struct {
 	permissions domain.PermissionRepository
 	access      domain.UserAccessRepository
 	bumper      CacheBumper
+	audit       audit.Auditor
 }
 
 // NewGrantPermission builds the use case.
-func NewGrantPermission(permissions domain.PermissionRepository, access domain.UserAccessRepository, bumper CacheBumper) *GrantPermission {
-	return &GrantPermission{permissions: permissions, access: access, bumper: bumper}
+func NewGrantPermission(permissions domain.PermissionRepository, access domain.UserAccessRepository, bumper CacheBumper, auditor audit.Auditor) *GrantPermission {
+	return &GrantPermission{permissions: permissions, access: access, bumper: bumper, audit: auditor}
 }
 
 // Execute runs the use case.
@@ -42,5 +44,17 @@ func (uc *GrantPermission) Execute(ctx context.Context, cmd GrantPermissionComma
 	if err := uc.access.GrantPermission(ctx, userID, perm.ID); err != nil {
 		return err
 	}
-	return bump(ctx, uc.bumper)
+	if err := bump(ctx, uc.bumper); err != nil {
+		return err
+	}
+	if uc.audit != nil {
+		_ = uc.audit.Record(ctx, audit.Entry{
+			SubjectType: "user_permissions",
+			SubjectID:   userID,
+			Action:      audit.ActionCreated,
+			NewValues:   map[string]any{"permission_id": perm.ID, "permission": perm.Name},
+			Actor:       audit.ActorFrom(ctx),
+		})
+	}
+	return nil
 }

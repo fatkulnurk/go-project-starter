@@ -91,13 +91,14 @@ literals live in constants (see `config`, `permission`, the DTO files).
 | POST   | `/api/v1/auth/login`      | —     | login (email/phone + password)    |
 | POST   | `/api/v1/auth/magic-link` | —     | request a magic login link        |
 | POST   | `/api/v1/auth/magic-link/verify` | — | exchange the token for credentials |
-| POST   | `/api/v1/auth/verify-email`  | —  | verify email with OTP             |
-| POST   | `/api/v1/auth/verify-phone`  | —  | verify phone with OTP             |
+| POST   | `/api/v1/auth/verify-email`  | —  | verify email with OTP (applies a pending email change) |
+| POST   | `/api/v1/auth/verify-phone`  | —  | verify phone with OTP (applies a pending phone change) |
 | POST   | `/api/v1/auth/forgot-password` | — | request a reset code             |
 | POST   | `/api/v1/auth/reset-password`  | — | reset password with code         |
 | POST   | `/api/v1/auth/refresh`     | —     | rotate refresh token              |
 | POST   | `/api/v1/auth/logout`      | Bearer | revoke refresh token            |
 | GET    | `/api/v1/auth/me`          | Bearer | current user profile + roles/permissions |
+| PATCH  | `/api/v1/auth/me`          | Bearer | update name; changing email/phone records a pending change + issues a new OTP (applied on verify) |
 
 ### RBAC (admin, requires `rbac.manage`)
 

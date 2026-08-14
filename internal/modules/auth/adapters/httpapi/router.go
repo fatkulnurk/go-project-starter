@@ -26,6 +26,7 @@ type Deps struct {
 	ResetPassword    *commands.ResetPassword
 	Refresh          *commands.Refresh
 	Logout           *commands.Logout
+	UpdateProfile    *commands.UpdateProfile
 	Profile          *queries.Profile
 	FindUserByEmail  *queries.FindUserByEmail
 	Authenticator    appauth.Authenticator
@@ -51,6 +52,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 			r.Use(platformhttp.Authenticate(deps.Authenticator))
 			r.Post("/logout", h.logout)
 			r.Get("/me", h.me)
+			r.Patch("/me", h.updateProfile)
 		})
 	})
 }

@@ -65,10 +65,11 @@ func (r *UserRepository) FindByPhone(ctx context.Context, phone string) (*domain
 func (r *UserRepository) Update(ctx context.Context, u *domain.User) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
 		UPDATE users
-		SET name = ?, password_hash = ?, email_verified_at = ?, phone_verified_at = ?,
-		    status = ?, updated_at = ?
+		SET name = ?, email = ?, phone = ?, password_hash = ?, email_verified_at = ?,
+		    phone_verified_at = ?, status = ?, updated_at = ?
 		WHERE id = ?`),
-		u.Name, u.PasswordHash, nullTime(u.EmailVerifiedAt), nullTime(u.PhoneVerifiedAt),
+		u.Name, nullString(u.Email), nullString(u.Phone), u.PasswordHash,
+		nullTime(u.EmailVerifiedAt), nullTime(u.PhoneVerifiedAt),
 		string(u.Status), u.UpdatedAt, u.ID)
 	return err
 }

@@ -5,11 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/application/hash"
-	"github.com/fatkulnurk/go-project-starter/internal/application/otp"
 	"github.com/fatkulnurk/go-project-starter/internal/application/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/ports"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/tasks"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
@@ -37,6 +36,7 @@ type Register struct {
 	hasher         hash.PasswordHasher
 	enqueuer       queue.Enqueuer
 	roles          ports.Roles
+	auditor        audit.Auditor
 	clock          clock.Clock
 	otpLength      int
 	otpTTL         time.Duration
@@ -46,8 +46,8 @@ type Register struct {
 
 // NewRegister builds the register use case. roles may be nil when RBAC is not
 // wired; the user is then created without any role.
-func NewRegister(users domain.UserRepository, codes domain.VerificationCodeRepository, hasher hash.PasswordHasher, enqueuer queue.Enqueuer, roles ports.Roles, clk clock.Clock, otpLength int, otpTTL time.Duration, otpMaxAttempts int, devMode bool) *Register {
-	return &Register{users: users, codes: codes, hasher: hasher, enqueuer: enqueuer, roles: roles, clock: clk, otpLength: otpLength, otpTTL: otpTTL, otpMaxAttempts: otpMaxAttempts, devMode: devMode}
+func NewRegister(users domain.UserRepository, codes domain.VerificationCodeRepository, hasher hash.PasswordHasher, enqueuer queue.Enqueuer, roles ports.Roles, auditor audit.Auditor, clk clock.Clock, otpLength int, otpTTL time.Duration, otpMaxAttempts int, devMode bool) *Register {
+	return &Register{users: users, codes: codes, hasher: hasher, enqueuer: enqueuer, roles: roles, auditor: auditor, clock: clk, otpLength: otpLength, otpTTL: otpTTL, otpMaxAttempts: otpMaxAttempts, devMode: devMode}
 }
 
 // Execute runs the use case.
@@ -91,6 +91,19 @@ func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*Register
 	if err := uc.users.Save(ctx, user); err != nil {
 		return nil, err
 	}
+	if uc.auditor != nil {
+		_ = uc.auditor.Record(ctx, audit.Entry{
+			SubjectType: "users",
+			SubjectID:   user.ID,
+			Action:      audit.ActionCreated,
+			NewValues: map[string]any{
+				"name":  user.Name,
+				"email": user.Email,
+				"phone": user.Phone,
+			},
+			Actor: audit.ActorFrom(ctx),
+		})
+	}
 	if uc.roles != nil {
 		if err := uc.roles.AssignDefaultRole(ctx, user.ID); err != nil {
 			return nil, err
@@ -99,20 +112,8 @@ func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*Register
 
 	res := &RegisterResult{UserID: user.ID}
 	if cmd.Email != "" {
-		if err := uc.codes.InvalidateByUser(ctx, user.ID, domain.PurposeVerify); err != nil {
-			return nil, err
-		}
-		code, err := otp.Generate(uc.otpLength)
+		code, err := issueVerificationCode(ctx, uc.codes, uc.enqueuer, user.ID, user.Name, domain.ChannelEmail, *user.Email, uc.otpLength, uc.otpTTL, uc.clock)
 		if err != nil {
-			return nil, err
-		}
-		vc := domain.NewVerificationCode(user.ID, domain.ChannelEmail, domain.PurposeVerify, code, uc.otpTTL, uc.clock.Now())
-		if err := uc.codes.Save(ctx, vc); err != nil {
-			return nil, err
-		}
-		if err := tasks.EnqueueVerificationEmail(ctx, uc.enqueuer, tasks.VerificationEmailPayload{
-			To: *user.Email, Name: user.Name, Code: code,
-		}); err != nil {
 			return nil, err
 		}
 		if uc.devMode {
@@ -120,20 +121,8 @@ func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*Register
 		}
 	}
 	if cmd.Phone != "" {
-		if err := uc.codes.InvalidateByUser(ctx, user.ID, domain.PurposeVerify); err != nil {
-			return nil, err
-		}
-		code, err := otp.Generate(uc.otpLength)
+		code, err := issueVerificationCode(ctx, uc.codes, uc.enqueuer, user.ID, user.Name, domain.ChannelPhone, *user.Phone, uc.otpLength, uc.otpTTL, uc.clock)
 		if err != nil {
-			return nil, err
-		}
-		vc := domain.NewVerificationCode(user.ID, domain.ChannelPhone, domain.PurposeVerify, code, uc.otpTTL, uc.clock.Now())
-		if err := uc.codes.Save(ctx, vc); err != nil {
-			return nil, err
-		}
-		if err := tasks.EnqueuePhoneVerification(ctx, uc.enqueuer, tasks.PhoneVerificationPayload{
-			To: *user.Phone, Code: code,
-		}); err != nil {
 			return nil, err
 		}
 		if uc.devMode {
