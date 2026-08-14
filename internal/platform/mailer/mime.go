@@ -22,13 +22,13 @@ func buildMIME(from, fromName string, msg mailer.Message) ([]byte, error) {
 	}
 	fromAddr := from
 	if fromName != "" {
-		fromAddr = fmt.Sprintf("%s <%s>", fromName, from)
+		fromAddr = fmt.Sprintf("%s <%s>", encodeHeaderName(fromName), from)
 	}
 
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", fromAddr)
-	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(msg.To, ", "))
-	fmt.Fprintf(&buf, "Subject: %s\r\n", msg.Subject)
+	fmt.Fprintf(&buf, "To: %s\r\n", encodeHeaderList(msg.To))
+	fmt.Fprintf(&buf, "Subject: %s\r\n", encodeHeaderSubject(msg.Subject))
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 
 	body := msg.Text
@@ -68,10 +68,11 @@ func buildMIME(from, fromName string, msg mailer.Message) ([]byte, error) {
 				ct = "application/octet-stream"
 			}
 		}
+		disp := mime.FormatMediaType("attachment", map[string]string{"filename": sanitizeHeaderValue(a.Filename)})
 		part, err := mw.CreatePart(textproto.MIMEHeader{
 			"Content-Type":              {ct},
 			"Content-Transfer-Encoding": {"base64"},
-			"Content-Disposition":       {fmt.Sprintf("attachment; filename=%q", a.Filename)},
+			"Content-Disposition":       {disp},
 		})
 		if err != nil {
 			return nil, err
@@ -89,4 +90,52 @@ func buildMIME(from, fromName string, msg mailer.Message) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// sanitizeHeaderValue strips control characters that could terminate the
+// header and inject further headers (header injection).
+func sanitizeHeaderValue(v string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' || r == '\x00' {
+			return -1
+		}
+		return r
+	}, v)
+}
+
+// encodeHeaderName renders a display name, folding non-ASCII into RFC-2047
+// encoded words.
+func encodeHeaderName(name string) string {
+	name = sanitizeHeaderValue(name)
+	if isASCII(name) {
+		return name
+	}
+	return mime.QEncoding.Encode("UTF-8", name)
+}
+
+// encodeHeaderSubject renders the subject with RFC-2047 encoding.
+func encodeHeaderSubject(subject string) string {
+	subject = sanitizeHeaderValue(subject)
+	if isASCII(subject) {
+		return subject
+	}
+	return mime.QEncoding.Encode("UTF-8", subject)
+}
+
+// encodeHeaderList renders a list of recipients, sanitizing each address.
+func encodeHeaderList(addrs []string) string {
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		out = append(out, sanitizeHeaderValue(a))
+	}
+	return strings.Join(out, ", ")
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }

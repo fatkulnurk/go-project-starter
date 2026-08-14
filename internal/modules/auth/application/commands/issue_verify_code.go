@@ -22,7 +22,10 @@ func issueVerificationCode(ctx context.Context, codes domain.VerificationCodeRep
 	if err != nil {
 		return "", err
 	}
-	vc := domain.NewVerificationCode(userID, channel, domain.PurposeVerify, code, otpTTL, clk.Now())
+	vc, err := domain.NewVerificationCode(userID, channel, domain.PurposeVerify, code, otpTTL, clk.Now())
+	if err != nil {
+		return "", err
+	}
 	if err := codes.Save(ctx, vc); err != nil {
 		return "", err
 	}

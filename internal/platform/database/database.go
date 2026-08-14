@@ -11,16 +11,30 @@ import (
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
-	_ "github.com/go-sql-driver/mysql" // mysql driver
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib" // postgres driver
 )
 
 // New opens a pool for cfg.Database. Callers must Close it.
 func New(cfg config.DatabaseConfig) (*sql.DB, error) {
-	dsn, driver := DSN(cfg)
-	db, err := sql.Open(driver, dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", cfg.Driver, err)
+	var db *sql.DB
+	var err error
+	switch cfg.Driver {
+	case config.DriverPostgres:
+		db, err = sql.Open("pgx", postgresDSN(cfg))
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", cfg.Driver, err)
+		}
+	default:
+		mc, err := mysqlConfig(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", cfg.Driver, err)
+		}
+		connector, err := mysql.NewConnector(mc)
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", cfg.Driver, err)
+		}
+		db = sql.OpenDB(connector)
 	}
 	if cfg.MaxOpenConns > 0 {
 		db.SetMaxOpenConns(cfg.MaxOpenConns)
@@ -44,34 +58,78 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 	return db, nil
 }
 
-// DSN builds a driver-agnostic database/sql DSN for cfg.
+// DSN builds a driver-agnostic database/sql DSN for cfg. The postgres value
+// is a URL with properly escaped credentials; the mysql value is a
+// go-sql-driver DSN. Prefer New, which uses structured configs for both
+// drivers so credentials with reserved characters always work.
 func DSN(cfg config.DatabaseConfig) (string, string) {
 	switch cfg.Driver {
 	case config.DriverPostgres:
-		return fmt.Sprintf(
-			"postgres://%s:%s@%s:%d/%s?sslmode=%s&timezone=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode), escapeParam(cfg.TimeZone),
-		), "pgx"
+		return postgresDSN(cfg), "pgx"
 	default:
-		return fmt.Sprintf(
-			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=%s&time_zone=%s&tls=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
-			escapeParam(cfg.TimeZone), mysqlTimeZoneParam(cfg.TimeZone), mysqlTLS(cfg.SSLMode),
-		), config.DriverMySQL
+		mc, err := mysqlConfig(cfg)
+		if err != nil {
+			return "", config.DriverMySQL
+		}
+		return mc.FormatDSN(), config.DriverMySQL
 	}
 }
 
-// MigrateURL builds a golang-migrate database URL for cfg.
+// MigrateURL builds a golang-migrate database URL for cfg. Both drivers parse
+// the userinfo with URL rules, so credentials are escaped.
 func MigrateURL(cfg config.DatabaseConfig) string {
 	switch cfg.Driver {
 	case config.DriverPostgres:
-		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&timezone=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode), escapeParam(cfg.TimeZone))
+		return postgresDSN(cfg)
 	default:
-		return fmt.Sprintf("mysql://%s:%s@tcp(%s:%d)/%s?loc=%s&time_zone=%s&tls=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
-			escapeParam(cfg.TimeZone), mysqlTimeZoneParam(cfg.TimeZone), mysqlTLS(cfg.SSLMode))
+		user := url.QueryEscape(cfg.User)
+		pass := url.QueryEscape(cfg.Password)
+		return fmt.Sprintf(
+			"mysql://%s:%s@tcp(%s:%d)/%s?loc=%s&time_zone=%s&tls=%s",
+			user, pass, cfg.Host, cfg.Port, url.PathEscape(cfg.Name),
+			escapeParam(cfg.TimeZone), mysqlTimeZoneParam(cfg.TimeZone), mysqlTLS(cfg.SSLMode),
+		)
 	}
+}
+
+// postgresDSN returns a postgres:// URL with credentials escaped for the URL
+// syntax, which pgx and golang-migrate both decode.
+func postgresDSN(cfg config.DatabaseConfig) string {
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.User, cfg.Password),
+		Host:   fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Path:   "/" + cfg.Name,
+	}
+	q := u.Query()
+	q.Set("sslmode", pgSSL(cfg.SSLMode))
+	q.Set("timezone", cfg.TimeZone)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// mysqlConfig builds a go-sql-driver Config. User and password are plain
+// struct fields, so credentials containing '@', ':', '/' or '?' are safe.
+func mysqlConfig(cfg config.DatabaseConfig) (*mysql.Config, error) {
+	mc := mysql.NewConfig()
+	mc.User = cfg.User
+	mc.Passwd = cfg.Password
+	mc.Net = "tcp"
+	mc.Addr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	mc.DBName = cfg.Name
+	mc.ParseTime = true
+	mc.Params = map[string]string{
+		"time_zone": mysqlTimeZoneValue(cfg.TimeZone),
+	}
+	mc.TLSConfig = mysqlTLS(cfg.SSLMode)
+	if cfg.TimeZone != "" && cfg.TimeZone != "UTC" {
+		loc, err := time.LoadLocation(cfg.TimeZone)
+		if err != nil {
+			return nil, fmt.Errorf("invalid timezone %q: %w", cfg.TimeZone, err)
+		}
+		mc.Loc = loc
+	}
+	return mc, nil
 }
 
 // escapeParam URL-encodes a query parameter value.
@@ -80,12 +138,17 @@ func escapeParam(v string) string { return url.QueryEscape(v) }
 // mysqlTimeZoneParam builds the go-sql-driver time_zone parameter, which
 // requires the value to be quoted (e.g. time_zone='+00:00'). Named zones
 // (e.g. Asia/Jakarta) need the MySQL timezone tables to be loaded, while
-// UTC/offset values always work.
+// UTC/offset values always work. The returned value is URL-encoded for DSNs.
 func mysqlTimeZoneParam(tz string) string {
+	return url.QueryEscape(mysqlTimeZoneValue(tz))
+}
+
+// mysqlTimeZoneValue returns the raw, quoted session value for time_zone.
+func mysqlTimeZoneValue(tz string) string {
 	if tz == "UTC" || tz == "" {
-		return "%27%2B00%3A00%27" // '+00:00'
+		return "'+00:00'"
 	}
-	return "%27" + url.QueryEscape(tz) + "%27"
+	return "'" + tz + "'"
 }
 
 // pgSSL maps DB_SSL_MODE to a postgres sslmode value.

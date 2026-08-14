@@ -33,11 +33,12 @@ type MagicLinkRequest struct {
 	baseURL  string
 	magicTTL time.Duration
 	devMode  bool
+	limiter  *rateLimiter
 }
 
 // NewMagicLinkRequest builds the use case.
-func NewMagicLinkRequest(users domain.UserRepository, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, clk clock.Clock, baseURL string, magicTTL time.Duration, devMode bool) *MagicLinkRequest {
-	return &MagicLinkRequest{users: users, codes: codes, enqueuer: enqueuer, clock: clk, baseURL: baseURL, magicTTL: magicTTL, devMode: devMode}
+func NewMagicLinkRequest(users domain.UserRepository, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, clk clock.Clock, baseURL string, magicTTL time.Duration, devMode bool, limiter *rateLimiter) *MagicLinkRequest {
+	return &MagicLinkRequest{users: users, codes: codes, enqueuer: enqueuer, clock: clk, baseURL: baseURL, magicTTL: magicTTL, devMode: devMode, limiter: limiter}
 }
 
 // Execute runs the use case.
@@ -46,19 +47,30 @@ func (uc *MagicLinkRequest) Execute(ctx context.Context, cmd MagicLinkRequestCom
 	if email == "" {
 		return nil, domain.ErrInvalid
 	}
+	if uc.limiter != nil {
+		if err := uc.limiter.Check(ctx, email, cmd.IP); err != nil {
+			return nil, err
+		}
+	}
 	user, err := uc.users.FindByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 	if user == nil {
-		return nil, domain.ErrNotFound
+		// No-op: return the same success shape as a real send so the response
+		// does not reveal whether the account exists. No code is issued and no
+		// email is enqueued.
+		return &MagicLinkRequestResult{ExpiresIn: uc.magicTTL}, nil
 	}
 
 	raw := domain.NewOpaqueToken()
 	if err := uc.codes.InvalidateByUser(ctx, user.ID, domain.PurposeMagicLink); err != nil {
 		return nil, err
 	}
-	vc := domain.NewVerificationCode(user.ID, domain.ChannelEmail, domain.PurposeMagicLink, raw, uc.magicTTL, uc.clock.Now())
+	vc, err := domain.NewVerificationCode(user.ID, domain.ChannelEmail, domain.PurposeMagicLink, raw, uc.magicTTL, uc.clock.Now())
+	if err != nil {
+		return nil, err
+	}
 	if err := uc.codes.Save(ctx, vc); err != nil {
 		return nil, err
 	}

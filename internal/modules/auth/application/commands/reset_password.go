@@ -44,7 +44,9 @@ func (uc *ResetPassword) Execute(ctx context.Context, cmd ResetPasswordCommand) 
 		return err
 	}
 	if user == nil {
-		return domain.ErrNotFound
+		// Uniform with a wrong code: never reveal whether the identifier is
+		// registered.
+		return domain.ErrInvalid
 	}
 
 	channel := domain.ChannelPhone

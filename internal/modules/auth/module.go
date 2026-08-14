@@ -88,16 +88,18 @@ func New(deps Dependencies) *Module {
 
 	issuer := commands.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Auditor, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock)
 	rateLimiter := commands.NewLoginRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow)
+	forgotLimiter := commands.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:forgot")
+	magicLimiter := commands.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:magic")
 
 	return &Module{
 		API: API{
 			Register:         commands.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
 			Login:            commands.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter),
-			MagicLinkRequest: commands.NewMagicLinkRequest(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Settings.DevMode),
+			MagicLinkRequest: commands.NewMagicLinkRequest(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Settings.DevMode, magicLimiter),
 			MagicLinkVerify:  commands.NewMagicLinkVerify(codes, users, issuer),
 			VerifyEmail:      commands.NewVerifyEmail(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
 			VerifyPhone:      commands.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			ForgotPassword:   commands.NewForgotPassword(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode),
+			ForgotPassword:   commands.NewForgotPassword(users, codes, deps.Enqueuer, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode, forgotLimiter),
 			ResetPassword:    commands.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
 			Refresh:          commands.NewRefresh(refreshTokens, users, issuer),
 			Logout:           commands.NewLogout(refreshTokens, deps.Auditor),

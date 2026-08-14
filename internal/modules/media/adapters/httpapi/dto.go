@@ -38,7 +38,7 @@ type mediaResponse struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-func toMediaResponse(m *domain.Media) mediaResponse {
+func toMediaResponse(m *domain.Media, url string) mediaResponse {
 	return mediaResponse{
 		ID:             m.ID,
 		ModelType:      m.ModelType,
@@ -49,15 +49,15 @@ func toMediaResponse(m *domain.Media) mediaResponse {
 		MimeType:       m.MimeType,
 		Disk:           m.Disk,
 		Size:           m.Size,
-		URL:            mediaBasePath + "/" + m.ID + pathDownload,
+		URL:            url,
 		CreatedAt:      m.CreatedAt,
 	}
 }
 
-func toMediaResponses(items []*domain.Media) []mediaResponse {
+func toMediaResponses(items []*domain.Media, url func(*domain.Media) string) []mediaResponse {
 	out := make([]mediaResponse, 0, len(items))
 	for _, m := range items {
-		out = append(out, toMediaResponse(m))
+		out = append(out, toMediaResponse(m, url(m)))
 	}
 	return out
 }

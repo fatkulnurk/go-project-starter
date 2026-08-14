@@ -34,11 +34,12 @@ type ForgotPassword struct {
 	otpLength int
 	otpTTL    time.Duration
 	devMode   bool
+	limiter   *rateLimiter
 }
 
 // NewForgotPassword builds the use case.
-func NewForgotPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, clk clock.Clock, otpLength int, otpTTL time.Duration, devMode bool) *ForgotPassword {
-	return &ForgotPassword{users: users, codes: codes, enqueuer: enqueuer, clock: clk, otpLength: otpLength, otpTTL: otpTTL, devMode: devMode}
+func NewForgotPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, clk clock.Clock, otpLength int, otpTTL time.Duration, devMode bool, limiter *rateLimiter) *ForgotPassword {
+	return &ForgotPassword{users: users, codes: codes, enqueuer: enqueuer, clock: clk, otpLength: otpLength, otpTTL: otpTTL, devMode: devMode, limiter: limiter}
 }
 
 // Execute runs the use case.
@@ -47,12 +48,20 @@ func (uc *ForgotPassword) Execute(ctx context.Context, cmd ForgotPasswordCommand
 	if identifier == "" {
 		return nil, domain.ErrInvalid
 	}
+	if uc.limiter != nil {
+		if err := uc.limiter.Check(ctx, identifier, cmd.IP); err != nil {
+			return nil, err
+		}
+	}
 	user, err := findByIdentifier(ctx, uc.users, identifier)
 	if err != nil {
 		return nil, err
 	}
 	if user == nil {
-		return nil, domain.ErrNotFound
+		// No-op: return the same success shape as a real send so the response
+		// does not reveal whether the account exists. No code is issued and no
+		// email/SMS is enqueued.
+		return &ForgotPasswordResult{ExpiresIn: uc.otpTTL}, nil
 	}
 
 	channel := domain.ChannelPhone
@@ -68,7 +77,10 @@ func (uc *ForgotPassword) Execute(ctx context.Context, cmd ForgotPasswordCommand
 	if err != nil {
 		return nil, err
 	}
-	vc := domain.NewVerificationCode(user.ID, channel, domain.PurposeReset, code, uc.otpTTL, uc.clock.Now())
+	vc, err := domain.NewVerificationCode(user.ID, channel, domain.PurposeReset, code, uc.otpTTL, uc.clock.Now())
+	if err != nil {
+		return nil, err
+	}
 	if err := uc.codes.Save(ctx, vc); err != nil {
 		return nil, err
 	}

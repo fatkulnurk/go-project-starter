@@ -12,6 +12,13 @@ import (
 // ErrNotFound is returned by Get/Attributes when the object does not exist.
 var ErrNotFound = errors.New("storage: object not found")
 
+// ErrInvalidKey is returned when a key is rejected (empty or path traversal).
+var ErrInvalidKey = errors.New("storage: invalid object key")
+
+// ErrNoURL is returned by URLGenerator when the driver cannot produce a
+// public URL for an object (e.g. the local filesystem has no HTTP server).
+var ErrNoURL = errors.New("storage: no public URL for object")
+
 // ObjectAttrs carries metadata about a stored object.
 type ObjectAttrs struct {
 	Size int64
@@ -34,4 +41,13 @@ type Storage interface {
 type Presigner interface {
 	// Presign returns a time-limited URL to GET key.
 	Presign(ctx context.Context, key string) (string, error)
+}
+
+// URLGenerator is optional; implemented by drivers that can produce a public
+// URL for a stored object. Drivers without public serving (e.g. local
+// filesystem) return ErrNoURL.
+type URLGenerator interface {
+	// URL returns a public URL to GET key. ErrNoURL when the driver cannot
+	// produce one.
+	URL(ctx context.Context, key string) (string, error)
 }

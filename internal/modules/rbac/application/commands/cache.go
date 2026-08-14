@@ -8,9 +8,14 @@ type CacheBumper interface {
 	Bump(ctx context.Context) error
 }
 
-func bump(ctx context.Context, b CacheBumper) error {
+// bumpBestEffort invalidates the RBAC cache after a committed mutation. A bump
+// failure must never fail a request whose database change is already durable,
+// otherwise clients would retry an already-applied mutation and hit a
+// confusing conflict. Stale entries self-heal via their TTL, so the cost of a
+// failed bump is bounded staleness, not corruption.
+func bumpBestEffort(ctx context.Context, b CacheBumper) {
 	if b == nil {
-		return nil
+		return
 	}
-	return b.Bump(ctx)
+	_ = b.Bump(ctx)
 }

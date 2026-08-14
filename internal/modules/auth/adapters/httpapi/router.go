@@ -52,6 +52,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 			r.Post("/login", h.login)
 			r.Post("/magic-link", h.magicLinkRequest)
 			r.Post("/magic-link/verify", h.magicLinkVerify)
+			r.Get("/magic-link/verify", h.magicLinkVerifyGet)
 			r.Post("/verify-email", h.verifyEmail)
 			r.Post("/verify-phone", h.verifyPhone)
 			r.Post("/forgot-password", h.forgotPassword)

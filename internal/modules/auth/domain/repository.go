@@ -19,6 +19,10 @@ type RefreshTokenRepository interface {
 	Save(ctx context.Context, t *RefreshToken) error
 	FindByHash(ctx context.Context, tokenHash string) (*RefreshToken, error)
 	RevokeByID(ctx context.Context, id string) error
+	// RevokeByIDIfActive revokes the token only if it is still active (not yet
+	// revoked) and reports whether it did. It is used for atomic rotation so a
+	// token can only be exchanged once even under concurrent requests.
+	RevokeByIDIfActive(ctx context.Context, id string) (bool, error)
 	RevokeByUserID(ctx context.Context, userID string) error
 }
 

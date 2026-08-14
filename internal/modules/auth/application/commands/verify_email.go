@@ -50,7 +50,9 @@ func (uc *VerifyEmail) Execute(ctx context.Context, cmd VerifyEmailCommand) erro
 		return err
 	}
 	if user == nil {
-		return domain.ErrNotFound
+		// Uniform with a wrong code: never reveal whether the email is
+		// registered.
+		return domain.ErrInvalid
 	}
 	if user.IsEmailVerified() {
 		return nil

@@ -44,8 +44,15 @@ func (uc *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (*TokenResul
 	if user == nil || user.IsSuspended() {
 		return nil, domain.ErrUnauthorized
 	}
-	if err := uc.refreshTokens.RevokeByID(ctx, t.ID); err != nil {
+	// Atomically revoke the old token. Only one concurrent request can win the
+	// rotation; a lost race (token already revoked) is treated as reuse of an
+	// already-rotated credential and rejected.
+	active, err := uc.refreshTokens.RevokeByIDIfActive(ctx, t.ID)
+	if err != nil {
 		return nil, err
+	}
+	if !active {
+		return nil, domain.ErrUnauthorized
 	}
 	return uc.issuer.Issue(ctx, user.ID)
 }

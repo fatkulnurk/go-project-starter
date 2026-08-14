@@ -72,10 +72,19 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// maxBodyBytes caps request bodies so unbounded payloads cannot exhaust memory.
+const maxBodyBytes = 1 << 20 // 1 MiB
+
 // DecodeJSON parses the request body into v, returning apierr.ErrInvalid on
-// malformed input so callers can map it with WriteMappedError.
-func DecodeJSON(r *http.Request, v any) error {
+// malformed input and apierr.ErrPayloadTooLarge when the body exceeds
+// maxBodyBytes, so callers can map them with WriteMappedError.
+func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return apierr.ErrPayloadTooLarge
+		}
 		return apierr.ErrInvalid
 	}
 	return nil

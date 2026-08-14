@@ -35,6 +35,7 @@ const (
 const (
 	defaultSweepInterval = 2 * time.Second
 	defaultWaitTimeout   = 2 * time.Second
+	defaultSendTimeout   = 30 * time.Second
 )
 
 var (
@@ -74,6 +75,7 @@ type smtpOpt struct {
 // smtpConn is an SMTP client together with the time of its last activity.
 type smtpConn struct {
 	conn         *smtp.Client
+	netConn      net.Conn
 	lastActivity time.Time
 }
 
@@ -236,7 +238,7 @@ func (s *SMTP) newConn() (*smtpConn, error) {
 		}
 	}
 
-	return &smtpConn{conn: cl, lastActivity: time.Now()}, nil
+	return &smtpConn{conn: cl, netConn: netCon, lastActivity: time.Now()}, nil
 }
 
 // borrowConn returns a connection from the pool, creating a new one when there
@@ -357,6 +359,13 @@ func (s *SMTP) sweepConns(interval time.Duration) {
 // whether the message can be retried.
 func (s *SMTP) sendOnConn(c *smtpConn, from string, to []string, data []byte) (bool, error) {
 	c.lastActivity = time.Now()
+
+	// Bound the whole exchange so a stuck server cannot hang the worker
+	// indefinitely; the pooled connection is reused afterwards.
+	if c.netConn != nil {
+		_ = c.netConn.SetDeadline(time.Now().Add(defaultSendTimeout))
+		defer func() { _ = c.netConn.SetDeadline(time.Time{}) }()
+	}
 
 	// Normalize recipient addresses.
 	recipients, err := normalizeRecipients(to)

@@ -49,6 +49,8 @@ func (s *SES) Send(ctx context.Context, msg mailer.Message) error {
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(ctx, defaultSendTimeout)
+	defer cancel()
 	_, err = s.client.SendEmail(ctx, &sesv2.SendEmailInput{
 		FromEmailAddress: aws.String(s.from),
 		Destination: &types.Destination{

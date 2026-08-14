@@ -31,11 +31,16 @@ type Login struct {
 	issuer               *TokenIssuer
 	requireEmailVerified bool
 	rateLimiter          *loginRateLimiter
+	// dummyHash is compared against when the identifier does not exist so the
+	// request burns the same bcrypt time as a wrong password, preventing a
+	// timing side-channel that would reveal which identifiers are registered.
+	dummyHash string
 }
 
 // NewLogin builds the login use case.
 func NewLogin(users domain.UserRepository, hasher hash.PasswordHasher, issuer *TokenIssuer, requireEmailVerified bool, rateLimiter *loginRateLimiter) *Login {
-	return &Login{users: users, hasher: hasher, issuer: issuer, requireEmailVerified: requireEmailVerified, rateLimiter: rateLimiter}
+	dummy, _ := hasher.Hash(context.Background(), "dummy-password-for-timing-equalization")
+	return &Login{users: users, hasher: hasher, issuer: issuer, requireEmailVerified: requireEmailVerified, rateLimiter: rateLimiter, dummyHash: dummy}
 }
 
 // Execute runs the use case.
@@ -52,7 +57,13 @@ func (uc *Login) Execute(ctx context.Context, cmd LoginCommand) (*LoginResult, e
 	if err != nil {
 		return nil, err
 	}
-	if user == nil || !uc.hasher.Compare(ctx, cmd.Password, user.PasswordHash) {
+	if user == nil {
+		// Burn the same hashing time as a real comparison so the response time
+		// does not reveal whether the identifier is registered.
+		uc.hasher.Compare(ctx, cmd.Password, uc.dummyHash)
+		return nil, domain.ErrUnauthorized
+	}
+	if !uc.hasher.Compare(ctx, cmd.Password, user.PasswordHash) {
 		return nil, domain.ErrUnauthorized
 	}
 	if user.IsSuspended() {
@@ -79,25 +90,28 @@ func findByIdentifier(ctx context.Context, users domain.UserRepository, identifi
 	return users.FindByPhone(ctx, identifier)
 }
 
-// loginRateLimiter counts failed login attempts per identifier+IP in cache.
-type loginRateLimiter struct {
+// rateLimiter counts requests per key in cache. It backs login attempt
+// limiting as well as per-target OTP/magic-link request throttling so a single
+// address cannot be mail-bombed.
+type rateLimiter struct {
 	cache  cache.Cache
 	max    int64
 	window time.Duration
+	prefix string
 }
 
-// NewLoginRateLimiter builds a rate limiter.
-func NewLoginRateLimiter(c cache.Cache, max int64, window time.Duration) *loginRateLimiter {
-	return &loginRateLimiter{cache: c, max: max, window: window}
+// NewRateLimiter builds a rate limiter that counts under prefix.
+func NewRateLimiter(c cache.Cache, max int64, window time.Duration, prefix string) *rateLimiter {
+	return &rateLimiter{cache: c, max: max, window: window, prefix: prefix}
 }
 
-func (l *loginRateLimiter) key(identifier, ip string) string {
-	return "rl:login:" + domain.HashSecret(identifier) + ":" + ip
+func (l *rateLimiter) key(target, ip string) string {
+	return l.prefix + ":" + domain.HashSecret(target) + ":" + ip
 }
 
 // Check increments the counter; returns ErrTooManyAttempts when over the limit.
-func (l *loginRateLimiter) Check(ctx context.Context, identifier, ip string) error {
-	key := l.key(identifier, ip)
+func (l *rateLimiter) Check(ctx context.Context, target, ip string) error {
+	key := l.key(target, ip)
 	n, err := l.cache.Increment(ctx, key, 1)
 	if err != nil {
 		return err
@@ -111,7 +125,24 @@ func (l *loginRateLimiter) Check(ctx context.Context, identifier, ip string) err
 	return nil
 }
 
-// Reset clears the counter after a successful login.
+// Reset clears the counter after a successful action.
+func (l *rateLimiter) Reset(ctx context.Context, target, ip string) {
+	_ = l.cache.Delete(ctx, l.key(target, ip))
+}
+
+// loginRateLimiter is kept for compatibility; its keys are namespaced under
+// the login prefix.
+type loginRateLimiter struct{ *rateLimiter }
+
+// NewLoginRateLimiter builds a login-scoped rate limiter.
+func NewLoginRateLimiter(c cache.Cache, max int64, window time.Duration) *loginRateLimiter {
+	return &loginRateLimiter{rateLimiter: NewRateLimiter(c, max, window, "rl:login")}
+}
+
+func (l *loginRateLimiter) Check(ctx context.Context, identifier, ip string) error {
+	return l.rateLimiter.Check(ctx, identifier, ip)
+}
+
 func (l *loginRateLimiter) Reset(ctx context.Context, identifier, ip string) {
-	_ = l.cache.Delete(ctx, l.key(identifier, ip))
+	l.rateLimiter.Reset(ctx, identifier, ip)
 }

@@ -18,7 +18,7 @@ type createRoleRequest struct {
 
 func (h *handler) createRole(w http.ResponseWriter, r *http.Request) {
 	var req createRoleRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -44,7 +44,7 @@ type createPermissionRequest struct {
 
 func (h *handler) createPermission(w http.ResponseWriter, r *http.Request) {
 	var req createPermissionRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -71,7 +71,7 @@ type syncRolePermissionsRequest struct {
 func (h *handler) syncRolePermissions(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var req syncRolePermissionsRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -91,7 +91,7 @@ type assignRoleRequest struct {
 func (h *handler) assignRole(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	var req assignRoleRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -105,7 +105,7 @@ func (h *handler) assignRole(w http.ResponseWriter, r *http.Request) {
 func (h *handler) revokeRole(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	var req assignRoleRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -123,7 +123,7 @@ type grantPermissionRequest struct {
 func (h *handler) grantPermission(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	var req grantPermissionRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -137,7 +137,7 @@ func (h *handler) grantPermission(w http.ResponseWriter, r *http.Request) {
 func (h *handler) revokePermission(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	var req grantPermissionRequest
-	if err := platformhttp.DecodeJSON(r, &req); err != nil {
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}

@@ -46,3 +46,14 @@ func (h *handler) magicLinkVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	writeSuccess(w, http.StatusOK, toTokenResponse(res.AccessToken, res.RefreshToken, res.ExpiresIn, res.User))
 }
+
+// magicLinkVerifyGet verifies a magic link delivered by email: the token
+// travels in the query string so a plain click resolves the login.
+func (h *handler) magicLinkVerifyGet(w http.ResponseWriter, r *http.Request) {
+	res, err := h.deps.MagicLinkVerify.Execute(r.Context(), commands.MagicLinkVerifyCommand{Token: r.URL.Query().Get("token")})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeSuccess(w, http.StatusOK, toTokenResponse(res.AccessToken, res.RefreshToken, res.ExpiresIn, res.User))
+}

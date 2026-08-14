@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+)
 
 // Channel identifies the delivery channel of a verification code.
 type Channel string
@@ -36,19 +40,25 @@ type VerificationCode struct {
 }
 
 // NewVerificationCode builds a code for a user/channel/purpose from its raw
-// value (already validated by the caller).
-func NewVerificationCode(userID string, channel Channel, purpose Purpose, raw string, ttl time.Duration, now time.Time) *VerificationCode {
+// value (already validated by the caller). The secret is stored hashed; OTPs
+// (low entropy) use bcrypt so an offline database leak cannot be brute-forced,
+// while magic links (high-entropy opaque tokens) use a fast SHA-256 digest.
+func NewVerificationCode(userID string, channel Channel, purpose Purpose, raw string, ttl time.Duration, now time.Time) (*VerificationCode, error) {
 	now = now.UTC()
+	codeHash, err := hashCode(raw, purpose)
+	if err != nil {
+		return nil, err
+	}
 	return &VerificationCode{
 		ID:        newID(),
 		UserID:    userID,
 		Channel:   channel,
 		Purpose:   purpose,
-		CodeHash:  HashSecret(raw),
+		CodeHash:  codeHash,
 		ExpiresAt: now.Add(ttl),
 		CreatedAt: now,
 		UpdatedAt: now,
-	}
+	}, nil
 }
 
 // IsExpired reports whether the code is past its expiry.
@@ -68,5 +78,21 @@ func (c *VerificationCode) Consume(now time.Time) {
 
 // Matches reports whether raw equals the stored secret.
 func (c *VerificationCode) Matches(raw string) bool {
-	return HashSecret(raw) == c.CodeHash
+	if c.Purpose == PurposeMagicLink {
+		return HashSecret(raw) == c.CodeHash
+	}
+	return bcrypt.CompareHashAndPassword([]byte(c.CodeHash), []byte(raw)) == nil
+}
+
+// hashCode hashes the raw secret for storage: bcrypt for OTPs (low entropy),
+// fast SHA-256 for magic links (high-entropy tokens kept searchable by hash).
+func hashCode(raw string, purpose Purpose) (string, error) {
+	if purpose == PurposeMagicLink {
+		return HashSecret(raw), nil
+	}
+	b, err := bcrypt.GenerateFromPassword([]byte(raw), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

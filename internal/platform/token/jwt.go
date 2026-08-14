@@ -59,7 +59,13 @@ func (m *Manager) IssueAccessToken(_ context.Context, c apptoken.Claims, ttl tim
 // ParseAccessToken implements apptoken.Manager.
 func (m *Manager) ParseAccessToken(_ context.Context, raw string) (*apptoken.Claims, error) {
 	var claims accessClaims
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+		// Small clock-skew tolerance so a barely-expired token from a slightly
+		// out-of-sync client is not spuriously rejected.
+		jwt.WithLeeway(30*time.Second),
+	)
 	tok, err := parser.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
 		return m.secret, nil
 	})

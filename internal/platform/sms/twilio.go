@@ -3,6 +3,7 @@ package sms
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/sms"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
@@ -24,12 +25,14 @@ func NewTwilio(from string, cfg config.TwilioConfig) (*Twilio, error) {
 	if cfg.AccountSID == "" || cfg.AuthToken == "" {
 		return nil, fmt.Errorf("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required")
 	}
+	client := twilio.NewRestClientWithParams(twilio.ClientParams{Username: cfg.AccountSID, Password: cfg.AuthToken})
+	client.SetTimeout(30 * time.Second)
 	return &Twilio{
 		from:         from,
 		accountSID:   cfg.AccountSID,
 		authToken:    cfg.AuthToken,
 		messagingSID: cfg.MessagingSID,
-		client:       twilio.NewRestClientWithParams(twilio.ClientParams{Username: cfg.AccountSID, Password: cfg.AuthToken}),
+		client:       client,
 	}, nil
 }
 

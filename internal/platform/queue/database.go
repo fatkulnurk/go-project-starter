@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -124,6 +125,17 @@ func (s *DatabaseServer) worker() {
 	}
 }
 
+// runHandler invokes a registered handler and converts a panic into an error
+// so a misbehaving task cannot kill the worker.
+func (s *DatabaseServer) runHandler(h queue.TaskHandler, ctx context.Context, j job) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("queue handler panic: %v", r)
+		}
+	}()
+	return h(ctx, j.payload)
+}
+
 // processOne claims a single available job and dispatches it to the
 // registered handler. It returns false when no job was available.
 func (s *DatabaseServer) processOne(ctx context.Context) bool {
@@ -145,7 +157,7 @@ func (s *DatabaseServer) processOne(ctx context.Context) bool {
 		return true
 	}
 
-	err = h(ctx, job.payload)
+	err = s.runHandler(h, ctx, job)
 	if err == nil {
 		s.finish(ctx, job.id)
 		return true
@@ -156,13 +168,17 @@ func (s *DatabaseServer) processOne(ctx context.Context) bool {
 		return true
 	}
 
-	if job.attempts >= job.maxAttempts {
-		s.log.Error("queue task gave up after max attempts", "task_type", job.queue, "attempts", job.attempts, "err", err)
+	// job.attempts is the pre-increment value read at claim time; the running
+	// attempt is attempts+1. Giving up happens when the current attempt equals
+	// maxAttempts, i.e. the job has been executed that many times.
+	attempt := job.attempts + 1
+	if attempt >= job.maxAttempts {
+		s.log.Error("queue task gave up after max attempts", "task_type", job.queue, "attempts", attempt, "err", err)
 		s.finish(ctx, job.id)
 		return true
 	}
-	s.release(ctx, job.id, job.attempts)
-	s.log.Warn("queue task failed, scheduling retry", "task_type", job.queue, "attempts", job.attempts, "err", err)
+	s.release(ctx, job.id, attempt)
+	s.log.Warn("queue task failed, scheduling retry", "task_type", job.queue, "attempts", attempt, "err", err)
 	return true
 }
 
@@ -202,15 +218,27 @@ func (s *DatabaseServer) claim(ctx context.Context) (job, bool, error) {
 
 // release makes a failed job available again after a growing backoff.
 func (s *DatabaseServer) release(ctx context.Context, id string, attempts int) {
-	delay := backoffBase << (attempts - 1)
-	if delay > backoffMax {
-		delay = backoffMax
-	}
+	delay := backoff(attempts)
 	const q = `UPDATE queue_jobs SET reserved_at = NULL, available_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := s.db.ExecContext(ctx, database.Rebind(q, s.driver), time.Now().UTC().Add(delay).Unix(), id)
 	if err != nil {
 		s.log.Error("queue release failed", "id", id, "err", err)
 	}
+}
+
+// backoff returns the retry delay after `attempts` failures. It doubles from
+// backoffBase up to backoffMax using a guarded loop so large attempt counts
+// cannot overflow the shift and produce a negative duration.
+func backoff(attempts int) time.Duration {
+	delay := backoffBase
+	for i := 1; i < attempts; i++ {
+		if delay >= backoffMax/2 {
+			delay = backoffMax
+			break
+		}
+		delay *= 2
+	}
+	return delay
 }
 
 // finish removes a processed or dropped job.

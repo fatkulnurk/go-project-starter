@@ -18,9 +18,14 @@ import (
 
 // Dependencies are wired by the composition root.
 type Dependencies struct {
-	DB            *sql.DB
-	DBDriver      string
-	Storage       storage.Storage
+	DB       *sql.DB
+	DBDriver string
+	Storage  storage.Storage
+	// URLGenerator produces public URLs for stored objects. When nil (or a
+	// driver without public serving, e.g. local), media URLs fall back to the
+	// API download endpoint built from BaseURL.
+	URLGenerator  storage.URLGenerator
+	BaseURL       string
 	Disk          string
 	Auditor       audit.Auditor
 	MaxUploadSize int64
@@ -32,6 +37,8 @@ type Dependencies struct {
 type Module struct {
 	API           API
 	maxUploadSize int64
+	urlGenerator  storage.URLGenerator
+	baseURL       string
 }
 
 // New constructs the media module.
@@ -45,6 +52,8 @@ func New(deps Dependencies) *Module {
 			ListByModel: queries.NewListByModel(repo),
 		},
 		maxUploadSize: deps.MaxUploadSize,
+		urlGenerator:  deps.URLGenerator,
+		baseURL:       deps.BaseURL,
 	}
 }
 
@@ -59,5 +68,7 @@ func (m *Module) RegisterHTTP(r chi.Router, authn appauth.Authenticator, authz a
 		Authenticator: authn,
 		Authorizer:    authz,
 		MaxUploadSize: m.maxUploadSize,
+		URLGenerator:  m.urlGenerator,
+		BaseURL:       m.baseURL,
 	})
 }

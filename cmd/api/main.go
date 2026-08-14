@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	appstorage "github.com/fatkulnurk/go-project-starter/internal/application/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
@@ -59,6 +60,13 @@ func run() error {
 	store, err := storage.New(cfg.Storage)
 	if err != nil {
 		return err
+	}
+
+	// The local driver has no HTTP server, so it cannot generate public URLs;
+	// the media module then falls back to the API download endpoint.
+	var urlGen appstorage.URLGenerator
+	if u, ok := store.(appstorage.URLGenerator); ok {
+		urlGen = u
 	}
 
 	cacheClient, err := cache.New(cfg.Cache, db, cfg.Database.Driver)
@@ -131,6 +139,8 @@ func run() error {
 		DB:            db,
 		DBDriver:      cfg.Database.Driver,
 		Storage:       store,
+		URLGenerator:  urlGen,
+		BaseURL:       cfg.BaseURL,
 		Disk:          cfg.Storage.Driver,
 		Auditor:       auditor,
 		MaxUploadSize: cfg.Media.MaxUploadSize,

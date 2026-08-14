@@ -68,9 +68,7 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 	if err := uc.roles.SetPermissions(ctx, role.ID, ids); err != nil {
 		return err
 	}
-	if err := bump(ctx, uc.bumper); err != nil {
-		return err
-	}
+	bumpBestEffort(ctx, uc.bumper)
 	if uc.audit != nil {
 		_ = uc.audit.Record(ctx, audit.Entry{
 			SubjectType: "role_permissions",

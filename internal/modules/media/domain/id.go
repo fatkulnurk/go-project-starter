@@ -13,7 +13,6 @@ import (
 // Storage key prefix for media objects.
 const (
 	keyPrefix     = "media"
-	pathSeparator = "/"
 	randTokenSize = 8
 )
 
@@ -52,7 +51,9 @@ func validateSegment(s string) error {
 }
 
 // uniqueFileName preserves the original extension but randomizes the stem so
-// uploads never collide.
+// uploads never collide. It strips path separators (both slashes) and control
+// characters, and caps the length so the resulting key cannot overflow the
+// file_name column nor escape the media root.
 func uniqueFileName(name string) string {
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
@@ -63,9 +64,23 @@ func uniqueFileName(name string) string {
 	if _, err := rand.Read(token); err != nil {
 		panic("media: crypto/rand unavailable: " + err.Error())
 	}
-	safe := strings.ReplaceAll(strings.TrimSpace(stem), pathSeparator, "-")
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r == '/' || r == '\\' || r == '\x00':
+			return '-'
+		case r < 0x20:
+			return -1
+		default:
+			return r
+		}
+	}, strings.TrimSpace(stem))
+	safe = strings.TrimLeft(safe, ".")
 	if safe == "" {
 		safe = "file"
+	}
+	const maxStem = 128
+	if len(safe) > maxStem {
+		safe = safe[:maxStem]
 	}
 	return safe + "-" + hex.EncodeToString(token) + ext
 }

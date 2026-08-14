@@ -5,6 +5,7 @@ package httpapi
 import (
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
+	"github.com/fatkulnurk/go-project-starter/internal/application/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media/application/queries"
 	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
@@ -21,6 +22,11 @@ type Deps struct {
 	Authorizer    authorization.Authorizer
 	// MaxUploadSize caps the request body for uploads, in bytes.
 	MaxUploadSize int64
+	// URLGenerator produces public URLs for stored objects; nil disables it
+	// and media responses fall back to the API download URL.
+	URLGenerator storage.URLGenerator
+	// BaseURL is used to build absolute fallback download URLs.
+	BaseURL string
 }
 
 // RegisterRoutes mounts the media API under /api/v1/media. Reads require

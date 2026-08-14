@@ -40,7 +40,8 @@ func (uc *Bootstrap) Execute(ctx context.Context, opts BootstrapOptions) error {
 			return err
 		}
 	}
-	return bump(ctx, uc.bumper)
+	bumpBestEffort(ctx, uc.bumper)
+	return nil
 }
 
 func (uc *Bootstrap) ensurePermission(ctx context.Context, name string) error {

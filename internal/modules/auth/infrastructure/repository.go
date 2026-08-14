@@ -176,6 +176,20 @@ func (r *RefreshTokenRepository) RevokeByID(ctx context.Context, id string) erro
 	return err
 }
 
+// RevokeByIDIfActive implements domain.RefreshTokenRepository.
+func (r *RefreshTokenRepository) RevokeByIDIfActive(ctx context.Context, id string) (bool, error) {
+	now := r.now()
+	res, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE id = ? AND revoked_at IS NULL`), now, now, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // RevokeByUserID implements domain.RefreshTokenRepository.
 func (r *RefreshTokenRepository) RevokeByUserID(ctx context.Context, userID string) error {
 	now := r.now()

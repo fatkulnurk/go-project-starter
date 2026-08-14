@@ -77,13 +77,27 @@ func (d *Database) Delete(ctx context.Context, key string) error {
 }
 
 // Increment implements cache.Cache. It creates the key with delta when missing.
-// A transaction with a row lock keeps concurrent increments race-free.
+// A transaction with a row lock keeps concurrent increments race-free: the row
+// is seeded idempotently first so two first-touches cannot double-insert.
 func (d *Database) Increment(ctx context.Context, key string, delta int64) (int64, error) {
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck // rolled back on error only
+
+	var seedQ string
+	if d.driver == config.DriverPostgres {
+		seedQ = `INSERT INTO cache (cache_key, value, expiration, created_at, updated_at)
+			 VALUES (?, '0', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			 ON CONFLICT (cache_key) DO NOTHING`
+	} else {
+		seedQ = `INSERT IGNORE INTO cache (cache_key, value, expiration, created_at, updated_at)
+			 VALUES (?, '0', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+	}
+	if _, err := tx.ExecContext(ctx, d.q(seedQ), key); err != nil {
+		return 0, err
+	}
 
 	var current sql.NullString
 	const selectQ = `SELECT value FROM cache WHERE cache_key = ? FOR UPDATE`
@@ -93,8 +107,7 @@ func (d *Database) Increment(ctx context.Context, key string, delta int64) (int6
 	}
 
 	var n int64
-	exists := err == nil
-	if exists && current.Valid {
+	if current.Valid {
 		n, err = strconv.ParseInt(current.String, 10, 64)
 		if err != nil {
 			return 0, err
@@ -102,17 +115,9 @@ func (d *Database) Increment(ctx context.Context, key string, delta int64) (int6
 	}
 	n += delta
 
-	var writeErr error
-	if exists {
-		const updateQ = `UPDATE cache SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE cache_key = ?`
-		_, writeErr = tx.ExecContext(ctx, d.q(updateQ), strconv.FormatInt(n, 10), key)
-	} else {
-		const insertQ = `INSERT INTO cache (cache_key, value, expiration, created_at, updated_at)
-			 VALUES (?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-		_, writeErr = tx.ExecContext(ctx, d.q(insertQ), key, strconv.FormatInt(n, 10))
-	}
-	if writeErr != nil {
-		return 0, writeErr
+	const updateQ = `UPDATE cache SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE cache_key = ?`
+	if _, err := tx.ExecContext(ctx, d.q(updateQ), strconv.FormatInt(n, 10), key); err != nil {
+		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
