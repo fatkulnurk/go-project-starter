@@ -14,6 +14,7 @@ import (
 
 	appid "github.com/fatkulnurk/go-project-starter/internal/application/id"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/cache"
@@ -98,8 +99,7 @@ func run() error {
 		DB:       db,
 		DBDriver: cfg.Database.Driver,
 		Cache:    cacheClient,
-		Enqueuer: queueClient,
-		Mailer:   mailSender,
+		Enqueuer: queueClient, Mailer: mailSender,
 		SMS:      smsSender,
 		Tokens:   tokenManager,
 		Hasher:   hasher,
@@ -123,6 +123,15 @@ func run() error {
 			AppName:               cfg.AppName,
 			AssetsBaseURL:         cfg.AssetsBaseURLOrDefault(),
 			DevMode:               devMode,
+		},
+	})
+
+	homepageModule := homepage.New(homepage.Dependencies{
+		Settings: homepage.Settings{
+			AppName:       cfg.AppName,
+			BaseURL:       cfg.BaseURL,
+			AssetsBaseURL: cfg.AssetsBaseURLOrDefault(),
+			Year:          clk.Now().Year(),
 		},
 	})
 
@@ -165,6 +174,7 @@ func run() error {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	authModule.RegisterHTTP(router)
+	homepageModule.RegisterAPI(router)
 	rbacModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
 
 	srv := platformhttp.NewServer(cfg.Port, router)

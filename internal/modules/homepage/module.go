@@ -1,7 +1,9 @@
 package homepage
 
 import (
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/api"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/web"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/application"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/view"
 	"github.com/go-chi/chi/v5"
 )
@@ -39,6 +41,18 @@ func New(deps Dependencies) *Module {
 func (m *Module) RegisterHTTP(r chi.Router) {
 	web.RegisterRoutes(r, web.Deps{
 		Common: view.Common{
+			AppName:       m.settings.AppName,
+			BaseURL:       m.settings.BaseURL,
+			AssetsBaseURL: m.settings.AssetsBaseURL,
+			Year:          m.settings.Year,
+		},
+	})
+}
+
+// RegisterAPI mounts the homepage JSON API on the API router.
+func (m *Module) RegisterAPI(r chi.Router) {
+	api.RegisterRoutes(r, api.Deps{
+		Info: application.Info{
 			AppName:       m.settings.AppName,
 			BaseURL:       m.settings.BaseURL,
 			AssetsBaseURL: m.settings.AssetsBaseURL,

@@ -107,6 +107,12 @@ go run ./cmd/web      # optional — public homepage on WEB_PORT
 
 ## API
 
+### Homepage
+
+| Method | Path | Auth | Description                        |
+|--------|------|------|------------------------------------|
+| GET    | `/`  | —    | app branding: `app_name`, `base_url`, `assets_base_url`, `year` |
+
 ### Auth
 
 | Method | Path                      | Auth  | Description                       |
