@@ -14,7 +14,9 @@ internal/modules/<name>/
 ├── infrastructure/    repository implementations (database/sql)
 ├── adapters/
 │   ├── httpapi/       HTTP handlers + DTOs (no business logic)
+│   │   └── templates/ embedded HTML pages rendered by these handlers
 │   └── queue/         background task handlers (if the module has any)
+│       └── templates/ embedded email/SMS message templates
 ├── module.go          `New(Dependencies) *Module` — composition inside module
 ├── api.go             `API` + `Service` — the public face other modules may use
 └── doc.go             package documentation
@@ -23,6 +25,22 @@ internal/modules/<name>/
 `module.go` is the composition root *inside* the module: it takes dependencies
 (ports) and builds the `API` (use cases) plus the module's exported helpers
 (`Authenticator()`, `RegisterHTTP()`, `RegisterQueue()`).
+
+### Content templates vs. platform layouts
+
+Each adapter that renders content keeps its own templates in an
+`adapters/<adapter>/templates/` subpackage: HTML pages under `httpapi/templates/`,
+email/SMS messages under `queue/templates/`. Those are the *what* — module-owned
+copy. The *how* — shared layouts — lives in `internal/platform` (`view` for
+pages, `mailer` for email) and is reused via `ParseFS`.
+
+### Uniform skeleton
+
+Every module keeps the same folder skeleton (`domain/`, `application/`,
+`infrastructure/`, `adapters/`, `module.go`, `api.go`, `doc.go`) even when a
+layer has no code yet, so navigation is predictable. A layer that genuinely has
+no content documents that with a short package comment in a `doc.go` (see
+`homepage/`).
 
 ## Dependency rules inside a module
 

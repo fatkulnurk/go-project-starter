@@ -39,6 +39,7 @@ type Settings struct {
 	RateLimitMax         int64
 	RateLimitWindow      time.Duration
 	BaseURL              string
+	AppName              string
 	DevMode              bool
 }
 
@@ -60,10 +61,12 @@ type Dependencies struct {
 
 // Module wires the auth use cases and their adapters.
 type Module struct {
-	API    API
-	authn  applicationauth.Authenticator
-	mailer mailer.MailSender
-	sms    sms.Sender
+	API      API
+	authn    applicationauth.Authenticator
+	mailer   mailer.MailSender
+	sms      sms.Sender
+	settings Settings
+	clock    clock.Clock
 }
 
 // New constructs the auth module.
@@ -92,9 +95,11 @@ func New(deps Dependencies) *Module {
 			Profile:          queries.NewProfile(users, roles),
 			FindUserByEmail:  queries.NewFindUserByEmail(users),
 		},
-		authn:  &authenticator{tokens: deps.Tokens},
-		mailer: deps.Mailer,
-		sms:    deps.SMS,
+		authn:    &authenticator{tokens: deps.Tokens},
+		mailer:   deps.Mailer,
+		sms:      deps.SMS,
+		settings: deps.Settings,
+		clock:    deps.Clock,
 	}
 }
 
@@ -124,7 +129,16 @@ func (m *Module) RegisterHTTP(r chi.Router) {
 
 // RegisterQueue registers the module's task handlers on a worker.
 func (m *Module) RegisterQueue(r appaqueue.Registrar) {
-	queueadapter.Register(r, m.mailer, m.sms)
+	queueadapter.Register(r, m.mailer, m.sms, queueadapterCommon(m.settings, m.clock))
+}
+
+// queueadapterCommon builds the branding injected into rendered messages.
+func queueadapterCommon(s Settings, clk clock.Clock) queueadapter.Common {
+	return queueadapter.Common{
+		AppName: s.AppName,
+		BaseURL: s.BaseURL,
+		Year:    clk.Now().Year(),
+	}
 }
 
 type authenticator struct {

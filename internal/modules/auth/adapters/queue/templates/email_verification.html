@@ -1,0 +1,9 @@
+{{define "email_verification"}}{{template "layout" .}}{{end}}
+
+{{define "content"}}
+<h2>Verify your email</h2>
+<p>Hi {{.Name}},</p>
+<p>Thanks for joining {{.Common.AppName}}. Please confirm your email address with the code below:</p>
+<p><span class="code">{{.Code}}</span></p>
+<p>This code expires shortly. If you didn't create an account, you can ignore this email.</p>
+{{end}}

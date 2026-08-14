@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/cache"
@@ -114,6 +115,7 @@ func run() error {
 			RateLimitMax:         cfg.Auth.RateLimitLoginMax,
 			RateLimitWindow:      cfg.Auth.RateLimitLoginWindow,
 			BaseURL:              cfg.BaseURL,
+			AppName:              cfg.AppName,
 			DevMode:              devMode,
 		},
 	})
@@ -123,6 +125,14 @@ func run() error {
 		DBDriver: cfg.Database.Driver,
 		Storage:  store,
 		Disk:     cfg.Storage.Driver,
+	})
+
+	homepageModule := homepage.New(homepage.Dependencies{
+		Settings: homepage.Settings{
+			AppName: cfg.AppName,
+			BaseURL: cfg.BaseURL,
+			Year:    clk.Now().Year(),
+		},
 	})
 
 	// Bootstrap default roles/permissions and assign the super admin.
@@ -146,6 +156,7 @@ func run() error {
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	homepageModule.RegisterHTTP(router)
 	authModule.RegisterHTTP(router)
 	mediaModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
 	rbacModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)

@@ -1,0 +1,1 @@
+{{define "sms_verification"}}{{.Code}} is your {{.Common.AppName}} verification code. It expires shortly.{{end}}

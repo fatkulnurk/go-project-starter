@@ -1,0 +1,11 @@
+{{define "email_magic_link_subject"}}Your magic sign-in link{{end}}
+
+{{define "email_magic_link_text"}}Hi {{.Name}},
+
+Sign in to {{.Common.AppName}} with this link:
+
+{{.Link}}
+
+This link works once and expires shortly.
+
+© {{.Common.Year}} {{.Common.AppName}} · {{.Common.BaseURL}}{{end}}

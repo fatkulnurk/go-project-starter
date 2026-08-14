@@ -20,10 +20,11 @@ driver per environment; modules only ever see the interface.
 | `http`              | chi router + middleware (auth, errors, standardized responses)     |
 | `token`             | `token.Manager` implementation (`jwt.go`, HS256 JWT)               |
 | `logger`            | structured logging (slog) setup                                    |
-| `mailer`            | `mailer.MailSender` implementations: `log`, `smtp` (pooled), `ses` + MIME |
+| `mailer`            | `mailer.MailSender` implementations: `log`, `smtp` (pooled), `ses` + MIME; shared email layout (`NewEmailLayout`) |
 | `queue`             | asynq client/server glue behind `queue.Enqueuer`                   |
 | `sms`               | `sms.Sender` implementations: `log`, `twilio`                      |
 | `storage`           | `storage.Storage` implementations: `local`, `s3` + factory         |
+| `view`              | shared base HTML layout (`NewLayout`) for browser pages            |
 
 ## What belongs here
 
@@ -61,3 +62,15 @@ All outbound clients use configurable pools instead of per-call connections:
   failed connections. TLS is controlled by `MAIL_SMTP_SSL`: `none`, `tls`
   (implicit TLS, e.g. port 465), or `starttls` (default).
 - `ses` and `s3` rely on the AWS SDK's built-in HTTP connection pool.
+
+### Shared layouts
+
+Two shared HTML layouts live in `platform` so every module renders consistently:
+
+- `mailer.NewEmailLayout()` — the email shell (brand header, body block,
+  footer). Auth attaches its email content templates via `ParseFS`.
+- `view.NewLayout()` — the browser page shell used by web pages (e.g. the
+  welcome page at `/`).
+
+Both define a `layout` template with a `content` block; modules attach their
+own content definitions with `(*html/template.Template).ParseFS`.

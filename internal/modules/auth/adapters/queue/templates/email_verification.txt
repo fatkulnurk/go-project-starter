@@ -1,0 +1,11 @@
+{{define "email_verification_subject"}}Verify your email{{end}}
+
+{{define "email_verification_text"}}Hi {{.Name}},
+
+Thanks for joining {{.Common.AppName}}. Your email verification code is:
+
+{{.Code}}
+
+Enter this code to confirm your email address. It expires shortly.
+
+© {{.Common.Year}} {{.Common.AppName}} · {{.Common.BaseURL}}{{end}}

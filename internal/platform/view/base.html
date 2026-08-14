@@ -1,0 +1,23 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Common.AppName}}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f7fafc; color: #1a202c; min-height: 100vh; display: flex; flex-direction: column; }
+  header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; }
+  header .brand { font-size: 20px; font-weight: 700; color: #3182ce; }
+  main { flex: 1; max-width: 720px; margin: 0 auto; width: 100%; padding: 32px 24px; }
+  footer { background: #ffffff; border-top: 1px solid #e2e8f0; padding: 16px 24px; text-align: center; font-size: 13px; color: #718096; }
+  footer a { color: #3182ce; text-decoration: none; }
+</style>
+</head>
+<body>
+  <header><span class="brand">{{.Common.AppName}}</span></header>
+  <main>{{block "content" .}}{{end}}</main>
+  <footer>© {{.Common.Year}} {{.Common.AppName}} · <a href="{{.Common.BaseURL}}">{{.Common.BaseURL}}</a></footer>
+</body>
+</html>
+{{end}}

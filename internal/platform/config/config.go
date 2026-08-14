@@ -36,6 +36,7 @@ const (
 	envAppEnv     = "APP_ENV"
 	envAppPort    = "APP_PORT"
 	envAppBaseURL = "APP_BASE_URL"
+	envAppName    = "APP_NAME"
 
 	envDBDriver   = "DB_DRIVER"
 	envDBHost     = "DB_HOST"
@@ -108,6 +109,7 @@ const (
 	defaultEnvironment       = EnvironmentDevelopment
 	defaultPort              = 8080
 	defaultBaseURL           = "http://localhost:8080"
+	defaultAppName           = "Go Project Starter"
 	defaultDBDriver          = DriverMySQL
 	defaultDBHost            = "localhost"
 	defaultDBPort            = 3306
@@ -153,6 +155,7 @@ type Config struct {
 	Environment string
 	Port        int
 	BaseURL     string
+	AppName     string
 
 	Database DatabaseConfig
 	Cache    CacheConfig
@@ -295,6 +298,7 @@ func Load() (Config, error) {
 		Environment: getenv(envAppEnv, defaultEnvironment),
 		Port:        getenvInt(envAppPort, defaultPort),
 		BaseURL:     getenv(envAppBaseURL, defaultBaseURL),
+		AppName:     getenv(envAppName, defaultAppName),
 		Database: DatabaseConfig{
 			Driver:          getenv(envDBDriver, defaultDBDriver),
 			Host:            getenv(envDBHost, defaultDBHost),

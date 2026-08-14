@@ -95,6 +95,7 @@ func run() error {
 			RateLimitMax:         cfg.Auth.RateLimitLoginMax,
 			RateLimitWindow:      cfg.Auth.RateLimitLoginWindow,
 			BaseURL:              cfg.BaseURL,
+			AppName:              cfg.AppName,
 			DevMode:              devMode,
 		},
 	})

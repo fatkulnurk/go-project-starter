@@ -1,0 +1,9 @@
+{{define "welcome"}}{{template "layout" .}}{{end}}
+
+{{define "content"}}
+<h1>Selamat datang di {{.Common.AppName}}</h1>
+<p>Starter modular monolith ini menyediakan autentikasi (password &amp; magic link),
+verifikasi email/telepon, RBAC, dan manajemen media melalui API JSON.</p>
+<p>Dokumentasi endpoint tersedia di bawah <code>/api/v1/auth</code>, <code>/api/v1/rbac</code>,
+dan <code>/api/v1/media</code>.</p>
+{{end}}

@@ -1,0 +1,9 @@
+{{define "email_magic_link"}}{{template "layout" .}}{{end}}
+
+{{define "content"}}
+<h2>Your magic sign-in link</h2>
+<p>Hi {{.Name}},</p>
+<p>Click the button below to sign in. This link works once and expires shortly:</p>
+<p><a class="button" href="{{.Link}}">Sign in to {{.Common.AppName}}</a></p>
+<p>If the button doesn't work, copy and paste this link into your browser:<br><a href="{{.Link}}">{{.Link}}</a></p>
+{{end}}
