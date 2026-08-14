@@ -30,6 +30,9 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 	if cfg.ConnMaxLifetime > 0 {
 		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	}
+	if cfg.ConnMaxIdleTime > 0 {
+		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -45,13 +48,13 @@ func DSN(cfg config.DatabaseConfig) (string, string) {
 	switch cfg.Driver {
 	case config.DriverPostgres:
 		return fmt.Sprintf(
-			"postgres://%s:%s@%s:%d/%s?sslmode=disable",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
+			"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode),
 		), "pgx"
 	default:
 		return fmt.Sprintf(
-			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
+			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC&tls=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, mysqlTLS(cfg.SSLMode),
 		), config.DriverMySQL
 	}
 }
@@ -60,11 +63,39 @@ func DSN(cfg config.DatabaseConfig) (string, string) {
 func MigrateURL(cfg config.DatabaseConfig) string {
 	switch cfg.Driver {
 	case config.DriverPostgres:
-		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
+		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode))
 	default:
-		return fmt.Sprintf("mysql://%s:%s@tcp(%s:%d)/%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
+		return fmt.Sprintf("mysql://%s:%s@tcp(%s:%d)/%s?tls=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, mysqlTLS(cfg.SSLMode))
+	}
+}
+
+// pgSSL maps DB_SSL_MODE to a postgres sslmode value.
+func pgSSL(mode string) string {
+	switch mode {
+	case "", "disable":
+		return "disable"
+	case "require":
+		return "require"
+	case "verify-ca":
+		return "verify-ca"
+	case "verify-full":
+		return "verify-full"
+	default:
+		return "disable"
+	}
+}
+
+// mysqlTLS maps DB_SSL_MODE to a go-sql-driver tls parameter.
+func mysqlTLS(mode string) string {
+	switch mode {
+	case "require":
+		return "true"
+	case "skip-verify":
+		return "skip-verify"
+	default:
+		return "false"
 	}
 }
 

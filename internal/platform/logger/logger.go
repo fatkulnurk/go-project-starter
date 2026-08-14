@@ -5,18 +5,22 @@ import (
 	"context"
 	"log/slog"
 	"os"
+
+	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
 )
 
 // New builds the application-wide logger from an env string
-// ("development" | "production").
+// ("development" | "production"). Production emits JSON to stdout for easy
+// ingestion; development uses human-readable text at debug level.
 func New(environment string) *slog.Logger {
 	level := slog.LevelInfo
-	if environment == "development" {
+	if environment == config.EnvironmentDevelopment {
 		level = slog.LevelDebug
 	}
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	}))
+	if environment == config.EnvironmentProduction {
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	}
+	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 }
 
 type ctxKey struct{}

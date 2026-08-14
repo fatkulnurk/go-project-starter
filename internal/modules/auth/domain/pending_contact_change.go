@@ -25,11 +25,13 @@ type PendingContactChange struct {
 	Status    PendingContactChangeStatus
 	AppliedAt *time.Time
 	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // NewPendingContactChange builds a pending change for a user/channel. The
 // values must already be normalized by the caller.
 func NewPendingContactChange(userID string, channel Channel, oldValue, newValue string, now time.Time) *PendingContactChange {
+	now = now.UTC()
 	return &PendingContactChange{
 		ID:        newID(),
 		UserID:    userID,
@@ -37,15 +39,17 @@ func NewPendingContactChange(userID string, channel Channel, oldValue, newValue 
 		OldValue:  oldValue,
 		NewValue:  newValue,
 		Status:    PendingStatusPending,
-		CreatedAt: now.UTC(),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
 // Apply marks the pending change as applied at now.
 func (p *PendingContactChange) Apply(now time.Time) {
-	t := now.UTC()
+	now = now.UTC()
 	p.Status = PendingStatusApplied
-	p.AppliedAt = &t
+	p.AppliedAt = &now
+	p.UpdatedAt = now
 }
 
 // IsApplied reports whether the change was already applied.

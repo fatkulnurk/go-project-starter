@@ -21,6 +21,9 @@ type Cache interface {
 	Increment(ctx context.Context, key string, delta int64) (int64, error)
 	// Expire sets the TTL of an existing key.
 	Expire(ctx context.Context, key string, ttl time.Duration) error
+	// Ping reports whether the backing store is reachable. In-memory stores
+	// always succeed.
+	Ping(ctx context.Context) error
 	// Close releases underlying resources.
 	Close() error
 }

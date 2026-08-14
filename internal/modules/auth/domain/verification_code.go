@@ -32,19 +32,22 @@ type VerificationCode struct {
 	ExpiresAt  time.Time
 	ConsumedAt *time.Time
 	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // NewVerificationCode builds a code for a user/channel/purpose from its raw
 // value (already validated by the caller).
 func NewVerificationCode(userID string, channel Channel, purpose Purpose, raw string, ttl time.Duration, now time.Time) *VerificationCode {
+	now = now.UTC()
 	return &VerificationCode{
 		ID:        newID(),
 		UserID:    userID,
 		Channel:   channel,
 		Purpose:   purpose,
 		CodeHash:  HashSecret(raw),
-		ExpiresAt: now.UTC().Add(ttl),
-		CreatedAt: now.UTC(),
+		ExpiresAt: now.Add(ttl),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -58,8 +61,9 @@ func (c *VerificationCode) IsConsumed() bool { return c.ConsumedAt != nil }
 
 // Consume marks the code as used at now.
 func (c *VerificationCode) Consume(now time.Time) {
-	v := now.UTC()
-	c.ConsumedAt = &v
+	now = now.UTC()
+	c.ConsumedAt = &now
+	c.UpdatedAt = now
 }
 
 // Matches reports whether raw equals the stored secret.

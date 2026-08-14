@@ -23,7 +23,15 @@ func NewRedis(cfg config.RedisConfig) *Redis {
 		DB:           cfg.DB,
 		PoolSize:     cfg.PoolSize,
 		MinIdleConns: cfg.MinIdleConns,
+		DialTimeout:  cfg.DialTimeout,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	})}
+}
+
+// Ping implements cache.Cache.
+func (r *Redis) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
 }
 
 // Get implements cache.Cache.

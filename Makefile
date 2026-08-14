@@ -33,5 +33,8 @@ check: build vet test fmt
 run-api:
 	go run ./cmd/api
 
+run-web:
+	go run ./cmd/web
+
 run-worker:
 	go run ./cmd/worker

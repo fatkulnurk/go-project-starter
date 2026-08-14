@@ -46,6 +46,7 @@ var (
 	KindVerificationNeeded = Kind{Status: 403, Code: "verification_required"}
 	KindCodeExpired        = Kind{Status: 410, Code: "code_expired"}
 	KindTooManyRequests    = Kind{Status: 429, Code: "too_many_requests"}
+	KindPayloadTooLarge    = Kind{Status: 413, Code: "payload_too_large"}
 	KindInvalid            = Kind{Status: 422, Code: "invalid"}
 	KindInternal           = Kind{Status: 500, Code: "internal"}
 )
@@ -116,6 +117,7 @@ var (
 	ErrVerificationNeeded = New(KindVerificationNeeded, "verification required")
 	ErrCodeExpired        = New(KindCodeExpired, "code expired")
 	ErrTooManyRequests    = New(KindTooManyRequests, "too many requests")
+	ErrPayloadTooLarge    = New(KindPayloadTooLarge, "payload too large")
 	ErrInvalid            = New(KindInvalid, "invalid")
 	ErrInternal           = New(KindInternal, "internal error")
 )

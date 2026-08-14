@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/apierr"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media/application/queries"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media/domain"
@@ -17,7 +19,15 @@ type handler struct {
 }
 
 func (h *handler) upload(w http.ResponseWriter, r *http.Request) {
+	if h.deps.MaxUploadSize > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, h.deps.MaxUploadSize)
+	}
 	if err := r.ParseMultipartForm(maxUploadMemory); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			platformhttp.WriteMappedError(w, apierr.ErrPayloadTooLarge)
+			return
+		}
 		platformhttp.WriteMappedError(w, domain.ErrInvalid)
 		return
 	}

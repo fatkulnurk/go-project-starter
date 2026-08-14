@@ -58,7 +58,7 @@ func run() error {
 		return err
 	}
 
-	queueServer, err := queue.NewServer(cfg.Queue)
+	queueServer, err := queue.NewServer(cfg.Queue, log)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func run() error {
 	}
 	defer queueClient.Close()
 
-	tokenManager := token.NewManager(cfg.Auth.JWTSecret)
+	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
 	hasher := hash.NewHasher(0)
 	clk := clock.Real{}
 	devMode := cfg.Environment != config.EnvironmentProduction
@@ -85,18 +85,20 @@ func run() error {
 		Hasher:   hasher,
 		Clock:    clk,
 		Settings: auth.Settings{
-			AccessTokenTTL:       cfg.Auth.AccessTokenTTL,
-			RefreshTokenTTL:      cfg.Auth.RefreshTokenTTL,
-			OTPLength:            cfg.Auth.OTPLength,
-			OTPTTL:               cfg.Auth.OTPTTL,
-			OTPMaxAttempts:       cfg.Auth.OTPMaxAttempts,
-			MagicLinkTTL:         cfg.Auth.MagicLinkTTL,
-			RequireEmailVerified: cfg.Auth.RequireEmailVerified,
-			RateLimitMax:         cfg.Auth.RateLimitLoginMax,
-			RateLimitWindow:      cfg.Auth.RateLimitLoginWindow,
-			BaseURL:              cfg.BaseURL,
-			AppName:              cfg.AppName,
-			DevMode:              devMode,
+			AccessTokenTTL:        cfg.Auth.AccessTokenTTL,
+			RefreshTokenTTL:       cfg.Auth.RefreshTokenTTL,
+			OTPLength:             cfg.Auth.OTPLength,
+			OTPTTL:                cfg.Auth.OTPTTL,
+			OTPMaxAttempts:        cfg.Auth.OTPMaxAttempts,
+			MagicLinkTTL:          cfg.Auth.MagicLinkTTL,
+			RequireEmailVerified:  cfg.Auth.RequireEmailVerified,
+			RateLimitMax:          cfg.Auth.RateLimitLoginMax,
+			RateLimitWindow:       cfg.Auth.RateLimitLoginWindow,
+			PublicRateLimitMax:    cfg.Auth.RateLimitPublicMax,
+			PublicRateLimitWindow: cfg.Auth.RateLimitPublicWindow,
+			BaseURL:               cfg.BaseURL,
+			AppName:               cfg.AppName,
+			DevMode:               devMode,
 		},
 	})
 

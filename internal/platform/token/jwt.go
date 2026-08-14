@@ -7,23 +7,30 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/id"
 	apptoken "github.com/fatkulnurk/go-project-starter/internal/application/token"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Manager issues and parses signed access tokens.
+// Manager issues and parses signed access tokens. The issuer and audience are
+// embedded in every token and enforced on parse, which ties tokens to the
+// environment they were minted for.
 type Manager struct {
-	secret []byte
+	secret   []byte
+	issuer   string
+	audience string
 }
 
-// NewManager builds a JWT manager with the given secret.
-func NewManager(secret string) *Manager {
-	return &Manager{secret: []byte(secret)}
+// NewManager builds a JWT manager. issuer and audience are validated against
+// on parse; pass empty strings to disable the checks.
+func NewManager(secret, issuer, audience string) *Manager {
+	return &Manager{secret: []byte(secret), issuer: issuer, audience: audience}
 }
 
 type accessClaims struct {
 	UserID string   `json:"uid"`
 	Roles  []string `json:"roles"`
+	JTI    string   `json:"jti,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -33,7 +40,11 @@ func (m *Manager) IssueAccessToken(_ context.Context, c apptoken.Claims, ttl tim
 	claims := accessClaims{
 		UserID: c.UserID,
 		Roles:  c.Roles,
+		JTI:    newID(),
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.issuer,
+			Audience:  jwt.ClaimStrings{m.audience},
+			Subject:   c.UserID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
@@ -48,17 +59,36 @@ func (m *Manager) IssueAccessToken(_ context.Context, c apptoken.Claims, ttl tim
 // ParseAccessToken implements apptoken.Manager.
 func (m *Manager) ParseAccessToken(_ context.Context, raw string) (*apptoken.Claims, error) {
 	var claims accessClaims
-	_, err := jwt.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
-		}
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	tok, err := parser.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
 		return m.secret, nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("parse access token: %w", err)
 	}
+	if !tok.Valid {
+		return nil, ErrInvalid
+	}
+	if m.issuer != "" && claims.Issuer != m.issuer {
+		return nil, fmt.Errorf("%w: issuer mismatch", ErrInvalid)
+	}
+	if m.audience != "" && !containsString(claims.Audience, m.audience) {
+		return nil, fmt.Errorf("%w: audience mismatch", ErrInvalid)
+	}
 	return &apptoken.Claims{UserID: claims.UserID, Roles: claims.Roles}, nil
+}
+
+func containsString(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrInvalid is returned for structurally invalid tokens.
 var ErrInvalid = errors.New("invalid token")
+
+// newID returns a version-7 UUID string, used for the jti claim.
+func newID() string { return id.New() }

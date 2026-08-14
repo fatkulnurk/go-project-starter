@@ -17,16 +17,18 @@ import (
 
 // Dependencies are wired by the composition root.
 type Dependencies struct {
-	DB       *sql.DB
-	DBDriver string
-	Storage  storage.Storage
-	Disk     string
-	Auditor  audit.Auditor
+	DB            *sql.DB
+	DBDriver      string
+	Storage       storage.Storage
+	Disk          string
+	Auditor       audit.Auditor
+	MaxUploadSize int64
 }
 
 // Module wires the media use cases and their adapters.
 type Module struct {
-	API API
+	API           API
+	maxUploadSize int64
 }
 
 // New constructs the media module.
@@ -39,6 +41,7 @@ func New(deps Dependencies) *Module {
 			GetMedia:    queries.NewGetMedia(repo, deps.Storage),
 			ListByModel: queries.NewListByModel(repo),
 		},
+		maxUploadSize: deps.MaxUploadSize,
 	}
 }
 
@@ -52,5 +55,6 @@ func (m *Module) RegisterHTTP(r chi.Router, authn appauth.Authenticator, authz a
 		ListByModel:   m.API.ListByModel,
 		Authenticator: authn,
 		Authorizer:    authz,
+		MaxUploadSize: m.maxUploadSize,
 	})
 }

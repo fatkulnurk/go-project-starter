@@ -19,6 +19,8 @@ type Deps struct {
 	ListByModel   *queries.ListByModel
 	Authenticator appauth.Authenticator
 	Authorizer    authorization.Authorizer
+	// MaxUploadSize caps the request body for uploads, in bytes.
+	MaxUploadSize int64
 }
 
 // RegisterRoutes mounts the media API under /api/v1/media. Reads require

@@ -89,5 +89,8 @@ func (m *Memory) Expire(_ context.Context, key string, ttl time.Duration) error 
 	return nil
 }
 
+// Ping implements cache.Cache.
+func (m *Memory) Ping(context.Context) error { return nil }
+
 // Close implements cache.Cache.
 func (m *Memory) Close() error { return nil }

@@ -39,7 +39,10 @@ func NewAddMedia(media domain.MediaRepository, storage storage.Storage, disk str
 
 // Execute runs the use case.
 func (uc *AddMedia) Execute(ctx context.Context, cmd AddMediaCommand) (*domain.Media, error) {
-	key := domain.ObjectKey(cmd.ModelType, cmd.ModelID, cmd.Collection, cmd.Name)
+	key, err := domain.ObjectKey(cmd.ModelType, cmd.ModelID, cmd.Collection, cmd.Name)
+	if err != nil {
+		return nil, err
+	}
 	if err := uc.storage.Put(ctx, key, cmd.Reader); err != nil {
 		return nil, err
 	}

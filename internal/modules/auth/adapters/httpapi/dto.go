@@ -6,12 +6,12 @@ import (
 
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/queries"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
+	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
 )
 
 // Well-known literals, kept as constants so no magic strings appear in DTOs.
 const (
 	tokenTypeBearer      = "Bearer"
-	headerXForwardedFor  = "X-Forwarded-For"
 	responseVerified     = "verified"
 	responseLoggedOut    = "logged_out"
 	responseReset        = "reset"
@@ -87,8 +87,5 @@ func toTokenResponse(access, refresh string, expiresIn time.Duration, u *domain.
 }
 
 func clientIP(r *http.Request) string {
-	if ip := r.Header.Get(headerXForwardedFor); ip != "" {
-		return ip
-	}
-	return r.RemoteAddr
+	return platformhttp.ClientIP(r)
 }

@@ -142,14 +142,14 @@ func NewRefreshTokenRepository(db *sql.DB, driver string) *RefreshTokenRepositor
 	return &RefreshTokenRepository{base{db: db, driver: driver}}
 }
 
-const refreshColumns = `id, user_id, token_hash, expires_at, revoked_at, created_at`
+const refreshColumns = `id, user_id, token_hash, expires_at, revoked_at, created_at, updated_at`
 
 // Save implements domain.RefreshTokenRepository.
 func (r *RefreshTokenRepository) Save(ctx context.Context, t *domain.RefreshToken) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
 		INSERT INTO refresh_tokens (`+refreshColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?)`),
-		t.ID, t.UserID, t.TokenHash, t.ExpiresAt, nullTime(t.RevokedAt), t.CreatedAt)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`),
+		t.ID, t.UserID, t.TokenHash, t.ExpiresAt, nullTime(t.RevokedAt), t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -161,20 +161,20 @@ func (r *RefreshTokenRepository) FindByHash(ctx context.Context, tokenHash strin
 
 // RevokeByID implements domain.RefreshTokenRepository.
 func (r *RefreshTokenRepository) RevokeByID(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`), time.Now().UTC(), id)
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE id = ? AND revoked_at IS NULL`), time.Now().UTC(), time.Now().UTC(), id)
 	return err
 }
 
 // RevokeByUserID implements domain.RefreshTokenRepository.
 func (r *RefreshTokenRepository) RevokeByUserID(ctx context.Context, userID string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`), time.Now().UTC(), userID)
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL`), time.Now().UTC(), time.Now().UTC(), userID)
 	return err
 }
 
 func scanRefreshToken(row *sql.Row) (*domain.RefreshToken, error) {
 	var t domain.RefreshToken
 	var revokedAt sql.NullTime
-	err := row.Scan(&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &revokedAt, &t.CreatedAt)
+	err := row.Scan(&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &revokedAt, &t.CreatedAt, &t.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -200,15 +200,15 @@ func NewVerificationCodeRepository(db *sql.DB, driver string) *VerificationCodeR
 	return &VerificationCodeRepository{base{db: db, driver: driver}}
 }
 
-const codeColumns = `id, user_id, channel, purpose, code_hash, attempts, expires_at, consumed_at, created_at`
+const codeColumns = `id, user_id, channel, purpose, code_hash, attempts, expires_at, consumed_at, created_at, updated_at`
 
 // Save implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) Save(ctx context.Context, c *domain.VerificationCode) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
 		INSERT INTO verification_codes (`+codeColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		c.ID, c.UserID, string(c.Channel), string(c.Purpose), c.CodeHash,
-		c.Attempts, c.ExpiresAt, nullTime(c.ConsumedAt), c.CreatedAt)
+		c.Attempts, c.ExpiresAt, nullTime(c.ConsumedAt), c.CreatedAt, c.UpdatedAt)
 	return err
 }
 
@@ -234,22 +234,22 @@ func (r *VerificationCodeRepository) FindActiveByHash(ctx context.Context, purpo
 
 // Consume implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) Consume(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL`), time.Now().UTC(), id)
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET consumed_at = ?, updated_at = ? WHERE id = ? AND consumed_at IS NULL`), time.Now().UTC(), time.Now().UTC(), id)
 	return err
 }
 
 // IncrementAttempts implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) IncrementAttempts(ctx context.Context, id string, attempts int) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET attempts = ? WHERE id = ?`), attempts, id)
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET attempts = ?, updated_at = ? WHERE id = ?`), attempts, time.Now().UTC(), id)
 	return err
 }
 
 // InvalidateByUser implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) InvalidateByUser(ctx context.Context, userID string, purpose domain.Purpose) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
-		UPDATE verification_codes SET consumed_at = ?
+		UPDATE verification_codes SET consumed_at = ?, updated_at = ?
 		WHERE user_id = ? AND purpose = ? AND consumed_at IS NULL`),
-		time.Now().UTC(), userID, string(purpose))
+		time.Now().UTC(), time.Now().UTC(), userID, string(purpose))
 	return err
 }
 
@@ -259,7 +259,7 @@ func (r *VerificationCodeRepository) scanCode(ctx context.Context, query string,
 	var consumedAt sql.NullTime
 	var channel, purpose string
 	err := row.Scan(&c.ID, &c.UserID, &channel, &purpose, &c.CodeHash,
-		&c.Attempts, &c.ExpiresAt, &consumedAt, &c.CreatedAt)
+		&c.Attempts, &c.ExpiresAt, &consumedAt, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

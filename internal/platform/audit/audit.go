@@ -4,13 +4,12 @@ package audit
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
+	"github.com/fatkulnurk/go-project-starter/internal/application/id"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/database"
 )
 
@@ -35,12 +34,12 @@ func (a *SQLAuditor) Record(ctx context.Context, entry audit.Entry) error {
 	if err != nil {
 		return err
 	}
-	const q = `INSERT INTO audit_logs (id, subject_type, subject_id, action, old_values, new_values, actor_type, actor_id, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO audit_logs (id, subject_type, subject_id, action, old_values, new_values, actor_type, actor_id, ip_address, user_agent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = a.db.ExecContext(ctx, database.Rebind(q, a.driver),
 		newID(), entry.SubjectType, entry.SubjectID, string(entry.Action),
 		oldJSON, newJSON, string(entry.Actor.Type), nullStr(entry.Actor.ID),
 		nullStr(entry.Actor.IPAddress), nullStr(entry.Actor.UserAgent),
-		time.Now().UTC(),
+		time.Now().UTC(), time.Now().UTC(),
 	)
 	return err
 }
@@ -63,10 +62,4 @@ func nullStr(s string) any {
 	return s
 }
 
-func newID() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		panic("audit: crypto/rand unavailable: " + err.Error())
-	}
-	return hex.EncodeToString(b)
-}
+func newID() string { return id.New() }

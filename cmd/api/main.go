@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/media"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/audit"
@@ -83,7 +82,7 @@ func run() error {
 		return err
 	}
 
-	tokenManager := token.NewManager(cfg.Auth.JWTSecret)
+	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
 	hasher := hash.NewHasher(0)
 	auditor := audit.New(db, cfg.Database.Driver)
 
@@ -109,35 +108,30 @@ func run() error {
 		RBAC:     rbacModule.Service(),
 		Auditor:  auditor,
 		Settings: auth.Settings{
-			AccessTokenTTL:       cfg.Auth.AccessTokenTTL,
-			RefreshTokenTTL:      cfg.Auth.RefreshTokenTTL,
-			OTPLength:            cfg.Auth.OTPLength,
-			OTPTTL:               cfg.Auth.OTPTTL,
-			OTPMaxAttempts:       cfg.Auth.OTPMaxAttempts,
-			MagicLinkTTL:         cfg.Auth.MagicLinkTTL,
-			RequireEmailVerified: cfg.Auth.RequireEmailVerified,
-			RateLimitMax:         cfg.Auth.RateLimitLoginMax,
-			RateLimitWindow:      cfg.Auth.RateLimitLoginWindow,
-			BaseURL:              cfg.BaseURL,
-			AppName:              cfg.AppName,
-			DevMode:              devMode,
+			AccessTokenTTL:        cfg.Auth.AccessTokenTTL,
+			RefreshTokenTTL:       cfg.Auth.RefreshTokenTTL,
+			OTPLength:             cfg.Auth.OTPLength,
+			OTPTTL:                cfg.Auth.OTPTTL,
+			OTPMaxAttempts:        cfg.Auth.OTPMaxAttempts,
+			MagicLinkTTL:          cfg.Auth.MagicLinkTTL,
+			RequireEmailVerified:  cfg.Auth.RequireEmailVerified,
+			RateLimitMax:          cfg.Auth.RateLimitLoginMax,
+			RateLimitWindow:       cfg.Auth.RateLimitLoginWindow,
+			PublicRateLimitMax:    cfg.Auth.RateLimitPublicMax,
+			PublicRateLimitWindow: cfg.Auth.RateLimitPublicWindow,
+			BaseURL:               cfg.BaseURL,
+			AppName:               cfg.AppName,
+			DevMode:               devMode,
 		},
 	})
 
 	mediaModule := media.New(media.Dependencies{
-		DB:       db,
-		DBDriver: cfg.Database.Driver,
-		Storage:  store,
-		Disk:     cfg.Storage.Driver,
-		Auditor:  auditor,
-	})
-
-	homepageModule := homepage.New(homepage.Dependencies{
-		Settings: homepage.Settings{
-			AppName: cfg.AppName,
-			BaseURL: cfg.BaseURL,
-			Year:    clk.Now().Year(),
-		},
+		DB:            db,
+		DBDriver:      cfg.Database.Driver,
+		Storage:       store,
+		Disk:          cfg.Storage.Driver,
+		Auditor:       auditor,
+		MaxUploadSize: cfg.Media.MaxUploadSize,
 	})
 
 	// Bootstrap default roles/permissions and assign the super admin.
@@ -156,32 +150,62 @@ func run() error {
 
 	// --- HTTP server ---------------------------------------------------------
 	authorizer := rbacModule.Authorizer()
+	platformhttp.SetTrustedProxies(cfg.TrustedProxies)
 
-	router := platformhttp.NewRouter()
+	router := platformhttp.NewRouter(platformhttp.RouterOptions{
+		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+	})
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	homepageModule.RegisterHTTP(router)
+	router.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			platformhttp.WriteMappedError(w, err)
+			return
+		}
+		if err := cacheClient.Ping(ctx); err != nil {
+			platformhttp.WriteMappedError(w, err)
+			return
+		}
+		platformhttp.WriteSuccess(w, http.StatusOK, map[string]string{"status": "ready"})
+	})
 	authModule.RegisterHTTP(router)
 	mediaModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
 	rbacModule.RegisterHTTP(router, authModule.Authenticator(), authorizer)
 
 	srv := platformhttp.NewServer(cfg.Port, router)
+
+	errCh := make(chan error, 1)
 	go func() {
 		log.Info("api listening", "addr", srv.Addr, "env", cfg.Environment)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("http server", "err", err)
-			os.Exit(1)
+			errCh <- err
+			return
 		}
+		errCh <- nil
 	}()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return err
+		}
+		return nil
+	case sig := <-stop:
+		log.Info("api shutting down", "signal", sig.String())
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
+		return err
+	}
+	if err := <-errCh; err != nil {
 		return err
 	}
 	log.Info("api stopped")

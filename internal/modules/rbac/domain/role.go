@@ -3,9 +3,9 @@
 package domain
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
+
+	"github.com/fatkulnurk/go-project-starter/internal/application/id"
 )
 
 // Errors returned by RBAC use cases.
@@ -44,10 +44,4 @@ func NewPermission(name string) (*Permission, error) {
 	return &Permission{ID: newID(), Name: name}, nil
 }
 
-func newID() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		panic("rbac: crypto/rand unavailable: " + err.Error())
-	}
-	return hex.EncodeToString(b)
-}
+func newID() string { return id.New() }

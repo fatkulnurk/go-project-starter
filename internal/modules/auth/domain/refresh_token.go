@@ -11,16 +11,19 @@ type RefreshToken struct {
 	ExpiresAt time.Time
 	RevokedAt *time.Time
 	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // NewRefreshToken builds a refresh token from its raw value at now.
 func NewRefreshToken(userID, rawToken string, ttl time.Duration, now time.Time) *RefreshToken {
+	now = now.UTC()
 	return &RefreshToken{
 		ID:        newID(),
 		UserID:    userID,
 		TokenHash: HashSecret(rawToken),
-		ExpiresAt: now.UTC().Add(ttl),
-		CreatedAt: now.UTC(),
+		ExpiresAt: now.Add(ttl),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -34,6 +37,7 @@ func (t *RefreshToken) IsRevoked() bool { return t.RevokedAt != nil }
 
 // Revoke marks the token as revoked at now.
 func (t *RefreshToken) Revoke(now time.Time) {
-	v := now.UTC()
-	t.RevokedAt = &v
+	now = now.UTC()
+	t.RevokedAt = &now
+	t.UpdatedAt = now
 }

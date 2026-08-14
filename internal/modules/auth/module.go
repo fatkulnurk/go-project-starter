@@ -22,6 +22,7 @@ import (
 	queueadapter "github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/queries"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/infrastructure"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
@@ -30,18 +31,20 @@ import (
 
 // Settings carries auth behavior configured in the composition root.
 type Settings struct {
-	AccessTokenTTL       time.Duration
-	RefreshTokenTTL      time.Duration
-	OTPLength            int
-	OTPTTL               time.Duration
-	OTPMaxAttempts       int
-	MagicLinkTTL         time.Duration
-	RequireEmailVerified bool
-	RateLimitMax         int64
-	RateLimitWindow      time.Duration
-	BaseURL              string
-	AppName              string
-	DevMode              bool
+	AccessTokenTTL        time.Duration
+	RefreshTokenTTL       time.Duration
+	OTPLength             int
+	OTPTTL                time.Duration
+	OTPMaxAttempts        int
+	MagicLinkTTL          time.Duration
+	RequireEmailVerified  bool
+	RateLimitMax          int64
+	RateLimitWindow       time.Duration
+	PublicRateLimitMax    int64
+	PublicRateLimitWindow time.Duration
+	BaseURL               string
+	AppName               string
+	DevMode               bool
 }
 
 // Dependencies are the ports the module needs; all wired by the composition
@@ -69,6 +72,7 @@ type Module struct {
 	sms      sms.Sender
 	settings Settings
 	clock    clock.Clock
+	cache    cache.Cache
 }
 
 // New constructs the auth module.
@@ -99,11 +103,12 @@ func New(deps Dependencies) *Module {
 			Profile:          queries.NewProfile(users, roles),
 			FindUserByEmail:  queries.NewFindUserByEmail(users),
 		},
-		authn:    &authenticator{tokens: deps.Tokens},
+		authn:    &authenticator{tokens: deps.Tokens, users: users},
 		mailer:   deps.Mailer,
 		sms:      deps.SMS,
 		settings: deps.Settings,
 		clock:    deps.Clock,
+		cache:    deps.Cache,
 	}
 }
 
@@ -114,21 +119,24 @@ func (m *Module) Authenticator() applicationauth.Authenticator { return m.authn 
 // RegisterHTTP mounts the module's routes on the shared router.
 func (m *Module) RegisterHTTP(r chi.Router) {
 	httpapi.RegisterRoutes(r, httpapi.Deps{
-		Register:         m.API.Register,
-		Login:            m.API.Login,
-		MagicLinkRequest: m.API.MagicLinkRequest,
-		MagicLinkVerify:  m.API.MagicLinkVerify,
-		VerifyEmail:      m.API.VerifyEmail,
-		VerifyPhone:      m.API.VerifyPhone,
-		ForgotPassword:   m.API.ForgotPassword,
-		ResetPassword:    m.API.ResetPassword,
-		Refresh:          m.API.Refresh,
-		Logout:           m.API.Logout,
-		UpdateProfile:    m.API.UpdateProfile,
-		Profile:          m.API.Profile,
-		FindUserByEmail:  m.API.FindUserByEmail,
-		Authenticator:    m.authn,
-		Authorizer:       authorization.AllowAll{},
+		Register:              m.API.Register,
+		Login:                 m.API.Login,
+		MagicLinkRequest:      m.API.MagicLinkRequest,
+		MagicLinkVerify:       m.API.MagicLinkVerify,
+		VerifyEmail:           m.API.VerifyEmail,
+		VerifyPhone:           m.API.VerifyPhone,
+		ForgotPassword:        m.API.ForgotPassword,
+		ResetPassword:         m.API.ResetPassword,
+		Refresh:               m.API.Refresh,
+		Logout:                m.API.Logout,
+		UpdateProfile:         m.API.UpdateProfile,
+		Profile:               m.API.Profile,
+		FindUserByEmail:       m.API.FindUserByEmail,
+		Authenticator:         m.authn,
+		Authorizer:            authorization.AllowAll{},
+		Cache:                 m.cache,
+		PublicRateLimitMax:    m.settings.PublicRateLimitMax,
+		PublicRateLimitWindow: m.settings.PublicRateLimitWindow,
 	})
 }
 
@@ -148,11 +156,19 @@ func queueadapterCommon(s Settings, clk clock.Clock) queueadapter.Common {
 
 type authenticator struct {
 	tokens token.Manager
+	users  domain.UserRepository
 }
 
 func (a *authenticator) Authenticate(ctx context.Context, raw string) (*applicationauth.Identity, error) {
 	claims, err := a.tokens.ParseAccessToken(ctx, raw)
 	if err != nil {
+		return nil, applicationauth.ErrUnauthenticated
+	}
+	user, err := a.users.FindByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, applicationauth.ErrUnauthenticated
+	}
+	if user == nil || user.IsSuspended() {
 		return nil, applicationauth.ErrUnauthenticated
 	}
 	return &applicationauth.Identity{UserID: claims.UserID, Roles: claims.Roles}, nil
