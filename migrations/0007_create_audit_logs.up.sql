@@ -1,40 +1,40 @@
 -- =============================================================================
 -- TABLE: audit_logs
--- Jejak audit global (immutable log) dari aksi penting pengguna/admin: siapa
--- melakukan apa, pada objek apa, sebelum/sesudah nilainya bagaimana. Satu baris
--- = satu kejadian. old_values/new_values berupa JSON string (mis.
--- '{"email":"a@b.c"}' ) berisi kolom yang berubah. actor_type = 'system'
--- (middleware, tidak ada user login) atau 'user'. Dipakai untuk forensik,
--- compliance, dan melacak aktivitas mencurigakan.
+-- Global audit trail (immutable log) of important user/admin actions: who did
+-- what, to which object, and how the values changed before/after. One row = one
+-- event. old_values/new_values are JSON strings (e.g. '{"email":"a@b.c"}')
+-- holding the changed columns. actor_type = 'system' (middleware, no logged-in
+-- user) or 'user'. Used for forensics, compliance, and tracking suspicious
+-- activity.
 --
--- Nilai action   : 'create' | 'update' | 'delete' | 'login' | 'logout' |
---                  'register' | 'verify' | 'reset_password' | 'revoke' | ...
+-- action values : 'create' | 'update' | 'delete' | 'login' | 'logout' |
+--                 'register' | 'verify' | 'reset_password' | 'revoke' | ...
 --
--- Contoh data:
+-- Example data:
 --   id           = '0195c5da-b134-7d00-8000-000000000001'  (UUID v7)
---   subject_type = 'user'                (entitas yang diubah)
---   subject_id   = '0195c5d4-2b40-7d00-8000-000000000001'  (id entitas yang diubah)
+--   subject_type = 'user'                (entity that changed)
+--   subject_id   = '0195c5d4-2b40-7d00-8000-000000000001'  (id of the changed entity)
 --   action       = 'update'
 --   old_values   = '{"name":"Budi Lama"}'
 --   new_values   = '{"name":"Budi Baru"}'
 --   actor_type   = 'user' | 'system'
---   actor_id     = '0195c5d4-2b40-7d00-8000-000000000001'  (user pelaku; NULL jika system)
+--   actor_id     = '0195c5d4-2b40-7d00-8000-000000000001'  (acting user; NULL if system)
 --   ip_address   = '192.168.1.10'
 --   user_agent   = 'Mozilla/5.0 ...'
 --   created_at   = '2026-01-15 10:30:00'
---   updated_at   = '2026-01-15 10:30:00' (sama dengan created_at, log tidak diubah)
+--   updated_at   = '2026-01-15 10:30:00' (same as created_at, logs are immutable)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id           VARCHAR(36)   NOT NULL PRIMARY KEY, -- UUID v7 (dibuat di app)
-    subject_type VARCHAR(191)  NOT NULL,             -- jenis entitas (mis. 'user', 'role')
-    subject_id   VARCHAR(36)   NOT NULL,             -- id entitas yang diubah
-    action       VARCHAR(16)   NOT NULL,             -- jenis aksi (create/update/...)
-    old_values   TEXT          NULL,                 -- JSON nilai sebelum berubah
-    new_values   TEXT          NULL,                 -- JSON nilai sesudah berubah
+    id           VARCHAR(36)   NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
+    subject_type VARCHAR(191)  NOT NULL,             -- entity type (e.g. 'user', 'role')
+    subject_id   VARCHAR(36)   NOT NULL,             -- id of the changed entity
+    action       VARCHAR(16)   NOT NULL,             -- action kind (create/update/...)
+    old_values   TEXT          NULL,                 -- JSON of the value before the change
+    new_values   TEXT          NULL,                 -- JSON of the value after the change
     actor_type   VARCHAR(16)   NOT NULL DEFAULT 'system', -- 'system' | 'user'
-    actor_id     VARCHAR(36)   NULL,                 -- id pelaku (NULL = system)
-    ip_address   VARCHAR(64)   NULL,                 -- IP asal request
-    user_agent   VARCHAR(512)  NULL,                 -- user-agent browser/client
+    actor_id     VARCHAR(36)   NULL,                 -- actor id (NULL = system)
+    ip_address   VARCHAR(64)   NULL,                 -- request source IP
+    user_agent   VARCHAR(512)  NULL,                 -- browser/client user-agent
     created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

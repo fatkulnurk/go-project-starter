@@ -1,27 +1,28 @@
 -- =============================================================================
--- RBAC (Role-Based Access Control): 5 tabel yang saling berhubungan.
---   roles            -> daftar peran (mis. 'admin', 'user')
---   permissions      -> daftar izin aksi (mis. 'media.upload', 'rbac.manage')
---   role_permissions -> izin yang dimiliki sebuah peran (many-to-many)
---   user_roles       -> peran yang dimiliki seorang user (many-to-many)
---   user_permissions -> izin tambahan langsung ke user (override/luar peran)
--- Otorisasi pada sebuah request = izin via peran user + izin langsung user.
+-- RBAC (Role-Based Access Control): 5 related tables.
+--   roles            -> list of roles (e.g. 'admin', 'user')
+--   permissions      -> list of action permissions (e.g. 'media.upload', 'rbac.manage')
+--   role_permissions -> permissions held by a role (many-to-many)
+--   user_roles       -> roles held by a user (many-to-many)
+--   user_permissions -> extra permissions granted directly to a user (override/outside roles)
+-- Authorization for a request = permissions via the user's roles + direct user permissions.
 -- =============================================================================
 
 -- =============================================================================
 -- TABLE: roles
--- Kumpulan peran yang bisa disematkan ke user. Peran default ('admin', 'user')
--- dibuat saat bootstrap aplikasi. Semua id berisi UUID v7 (36 char) dari app.
+-- Roles that can be assigned to users. The default roles ('admin', 'user')
+-- are created during application bootstrap. All ids are app-generated UUID v7
+-- (36 chars).
 --
--- Contoh data:
+-- Example data:
 --   id         = '0195c5d7-5c2f-7d00-8000-000000000001'  (UUID v7)
---   name       = 'admin' | 'user'         (unik)
+--   name       = 'admin' | 'user'         (unique)
 --   created_at = '2026-01-15 10:30:00'
 --   updated_at = '2026-01-15 10:30:00'
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS roles (
-    id         VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (dibuat di app)
-    name       VARCHAR(64)  NOT NULL,             -- nama peran (unik)
+    id         VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
+    name       VARCHAR(64)  NOT NULL,             -- role name (unique)
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (name)
@@ -29,17 +30,17 @@ CREATE TABLE IF NOT EXISTS roles (
 
 -- =============================================================================
 -- TABLE: permissions
--- Daftar izin granular yang bisa dicek di endpoint. Satu izin = satu aksi API.
+-- Granular permissions checked at endpoints. One permission = one API action.
 --
--- Contoh data:
+-- Example data:
 --   id         = '0195c5d7-6d30-7d00-8000-000000000001'  (UUID v7)
---   name       = 'media.upload' | 'rbac.manage' | 'media.delete'   (unik)
+--   name       = 'media.upload' | 'rbac.manage' | 'media.delete'   (unique)
 --   created_at = '2026-01-15 10:30:00'
 --   updated_at = '2026-01-15 10:30:00'
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS permissions (
-    id         VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (dibuat di app)
-    name       VARCHAR(64)  NOT NULL,             -- nama izin (unik)
+    id         VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
+    name       VARCHAR(64)  NOT NULL,             -- permission name (unique)
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (name)
@@ -47,11 +48,11 @@ CREATE TABLE IF NOT EXISTS permissions (
 
 -- =============================================================================
 -- TABLE: role_permissions
--- Menghubungkan peran dengan izin (many-to-many). Izin yang dimiliki semua
--- user berperan 'user' harus diisi di sini agar tidak ditambahkan satu-satu.
--- created_at/updated_at diisi otomatis oleh database.
+-- Links roles to permissions (many-to-many). Permissions shared by every user
+-- with the 'user' role must be populated here so they are not added one by one.
+-- created_at/updated_at are filled automatically by the database.
 --
--- Contoh data:
+-- Example data:
 --   role_id       = '0195c5d7-5c2f-7d00-8000-000000000001' (admin)
 --   permission_id = '0195c5d7-6d30-7d00-8000-000000000001' (media.upload)
 -- =============================================================================
@@ -67,10 +68,10 @@ CREATE TABLE IF NOT EXISTS role_permissions (
 
 -- =============================================================================
 -- TABLE: user_roles
--- Menghubungkan user dengan peran (many-to-many). Satu user bisa punya banyak
--- peran; izinnya digabung dari semua peran miliknya.
+-- Links users to roles (many-to-many). A user can hold many roles; their
+-- permissions are the union of all their roles.
 --
--- Contoh data:
+-- Example data:
 --   user_id    = '0195c5d4-2b40-7d00-8000-000000000001' (Budi)
 --   role_id    = '0195c5d7-5c2f-7d00-8000-000000000001' (admin)
 -- =============================================================================
@@ -86,10 +87,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 -- =============================================================================
 -- TABLE: user_permissions
--- Izin khusus yang diberikan langsung ke user, terlepas dari perannya.
--- Dipakai untuk pengecualian: beri izin ke satu user tanpa membuat peran baru.
+-- Permissions granted directly to a user, regardless of their roles.
+-- Used for exceptions: grant one user a permission without creating a new role.
 --
--- Contoh data:
+-- Example data:
 --   user_id       = '0195c5d4-2b40-7d00-8000-000000000001' (Budi)
 --   permission_id = '0195c5d7-7e31-7d00-8000-000000000001' (media.delete)
 -- =============================================================================

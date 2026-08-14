@@ -1,10 +1,10 @@
-// Package id mendefinisikan kontrak generator identifier bersama. Module dan
-// platform memanggil New di sini, bukan library UUID secara langsung, sehingga
-// pemilihan implementasi tetap terpusat dan application layer bebas dari
-// library eksternal.
+// Package id defines the shared identifier generator contract. Modules and
+// platform packages call New here instead of a UUID library directly, so the
+// implementation choice stays centralized and the application layer stays free
+// of external libraries.
 package id
 
-// Generator menghasilkan identifier unik.
+// Generator produces unique identifiers.
 type Generator interface {
 	// New returns a version-7 UUID string. UUID v7 is time-ordered so rows sort
 	// naturally by insertion time, which keeps indexes friendly.

@@ -1,37 +1,37 @@
 -- =============================================================================
 -- TABLE: verification_codes
--- Kode verifikasi sekali pakai (OTP) dan magic link. Dipakai untuk:
---   - verifikasi email / nomor HP
+-- One-time verification codes (OTP) and magic links. Used for:
+--   - email / phone verification
 --   - forgot password
---   - login passwordless (magic link)
--- Kode asli TIDAK disimpan; hanya hash-nya. Satu user boleh punya beberapa
--- kode; query mengambil yang terbaru yang masih berlaku (belum consumed, belum
--- expired). attempts mencatat berapa kali gagal memasukkan kode untuk anti-brute-force.
+--   - passwordless login (magic link)
+-- The raw code is NOT stored, only its hash. A user may have several codes;
+-- queries fetch the newest still-valid one (not consumed, not expired).
+-- attempts counts failed submissions for brute-force protection.
 --
--- Nilai channel  : 'email' | 'sms'
--- Nilai purpose  : 'verify_email' | 'verify_phone' | 'reset_password' | 'magic_link'
+-- channel values: 'email' | 'sms'
+-- purpose values: 'verify_email' | 'verify_phone' | 'reset_password' | 'magic_link'
 --
--- Contoh data:
+-- Example data:
 --   id          = '0195c5d6-4b2e-7d00-8000-000000000001'  (UUID v7)
 --   user_id     = '0195c5d4-2b40-7d00-8000-000000000001'  (FK -> users.id)
 --   channel     = 'email'
 --   purpose     = 'verify_email'
---   code_hash   = sha256 hex dari kode OTP (6 digit) atau magic link token
---   attempts    = 0                   (bertambah setiap salah input)
---   expires_at  = '2026-01-15 10:45:00' (TTL default 15m)
---   consumed_at = NULL                (NULL = masih berlaku; terisi saat sukses)
+--   code_hash   = sha256 hex of the OTP (6 digits) or magic link token
+--   attempts    = 0                   (increments on each wrong input)
+--   expires_at  = '2026-01-15 10:45:00' (default TTL 15m)
+--   consumed_at = NULL                (NULL = still valid; set on success)
 --   created_at  = '2026-01-15 10:30:00'
---   updated_at  = '2026-01-15 10:30:00' (ter-update saat consumed/attempts)
+--   updated_at  = '2026-01-15 10:30:00' (updated on consume/attempts)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS verification_codes (
-    id          VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (dibuat di app)
-    user_id     VARCHAR(36)  NOT NULL,             -- pemilik kode (FK users.id)
+    id          VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
+    user_id     VARCHAR(36)  NOT NULL,             -- code owner (FK users.id)
     channel     VARCHAR(16)  NOT NULL,             -- 'email' | 'sms'
-    purpose     VARCHAR(24)  NOT NULL,             -- jenis keperluan kode
-    code_hash   VARCHAR(64)  NOT NULL,             -- SHA-256 kode/magic-link token
-    attempts    INT          NOT NULL DEFAULT 0,   -- jumlah percobaan gagal
-    expires_at  TIMESTAMP    NOT NULL,             -- waktu kadaluarsa
-    consumed_at TIMESTAMP    NULL,                 -- waktu kode terpakai (NULL = aktif)
+    purpose     VARCHAR(24)  NOT NULL,             -- kind of code
+    code_hash   VARCHAR(64)  NOT NULL,             -- SHA-256 of code/magic-link token
+    attempts    INT          NOT NULL DEFAULT 0,   -- failed attempt count
+    expires_at  TIMESTAMP    NOT NULL,             -- expiry time
+    consumed_at TIMESTAMP    NULL,                 -- when the code was used (NULL = active)
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_verification_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE

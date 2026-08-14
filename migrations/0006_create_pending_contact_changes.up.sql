@@ -1,33 +1,34 @@
 -- =============================================================================
 -- TABLE: pending_contact_changes
--- Perubahan kontak (email/HP) yang belum tuntas. Flow-nya: user mengganti email
--- -> baris pending dibuat dengan status 'pending' -> OTP dikirim ke alamat baru
--- -> saat OTP diverifikasi, perubahan diterapkan ke users + baris ini menjadi
--- 'applied'. Tujuan: tidak langsung mengubah email/HP utama sebelum dibuktikan
--- bahwa alamat baru itu benar-benar milik user (anti-hijack akun).
+-- Contact (email/phone) changes that are not yet complete. Flow: a user changes
+-- their email -> a pending row is created with status 'pending' -> an OTP is
+-- sent to the new address -> when the OTP is verified the change is applied to
+-- users and this row becomes 'applied'. Purpose: never change the primary
+-- email/phone before proving the new address really belongs to the user
+-- (anti account hijacking).
 --
--- Nilai channel : 'email' | 'sms'
--- Nilai status  : 'pending' | 'applied'
+-- channel values: 'email' | 'sms'
+-- status values : 'pending' | 'applied'
 --
--- Contoh data:
+-- Example data:
 --   id         = '0195c5d9-a033-7d00-8000-000000000001'  (UUID v7)
 --   user_id    = '0195c5d4-2b40-7d00-8000-000000000001'  (FK -> users.id)
 --   channel    = 'email'
---   old_value  = 'budi@example.com'     (nilai lama yang akan diganti)
---   new_value  = 'budi.baru@example.com'(nilai baru tujuan)
+--   old_value  = 'budi@example.com'     (old value being replaced)
+--   new_value  = 'budi.baru@example.com'(new target value)
 --   status     = 'pending'
---   applied_at = NULL                   (terisi setelah diverifikasi)
+--   applied_at = NULL                   (filled after verification)
 --   created_at = '2026-01-15 10:30:00'
---   updated_at = '2026-01-15 10:30:00' (ter-update saat applied)
+--   updated_at = '2026-01-15 10:30:00' (updated on applied)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS pending_contact_changes (
-    id          VARCHAR(36)   NOT NULL PRIMARY KEY, -- UUID v7 (dibuat di app)
-    user_id     VARCHAR(36)   NOT NULL,             -- pemilik akun (FK users.id)
+    id          VARCHAR(36)   NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
+    user_id     VARCHAR(36)   NOT NULL,             -- account owner (FK users.id)
     channel     VARCHAR(16)   NOT NULL,             -- 'email' | 'sms'
-    old_value   VARCHAR(255)  NOT NULL,             -- kontak lama
-    new_value   VARCHAR(255)  NOT NULL,             -- kontak baru (tujuan)
+    old_value   VARCHAR(255)  NOT NULL,             -- old contact
+    new_value   VARCHAR(255)  NOT NULL,             -- new contact (target)
     status      VARCHAR(16)   NOT NULL DEFAULT 'pending', -- 'pending' | 'applied'
-    applied_at  TIMESTAMP     NULL,                 -- waktu perubahan diterapkan
+    applied_at  TIMESTAMP     NULL,                 -- when the change was applied
     created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_pending_contact_changes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
