@@ -42,7 +42,7 @@ func run() error {
 	}
 	defer db.Close()
 
-	cacheClient, err := cache.New(cfg.Cache)
+	cacheClient, err := cache.New(cfg.Cache, db, cfg.Database.Driver)
 	if err != nil {
 		return err
 	}

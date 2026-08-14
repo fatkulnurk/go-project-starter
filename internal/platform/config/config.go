@@ -26,6 +26,7 @@ const (
 	DriverPostgres = "postgres"
 	DriverRedis    = "redis"
 	DriverMemory   = "memory"
+	DriverDB       = "db"
 	DriverLocal    = "local"
 	DriverS3       = "s3"
 	DriverLog      = "log"
@@ -574,9 +575,9 @@ func (c Config) validate() []string {
 	}
 
 	switch c.Cache.Driver {
-	case DriverRedis, DriverMemory:
+	case DriverRedis, DriverMemory, DriverDB:
 	default:
-		errs = append(errs, "CACHE_DRIVER must be 'redis' or 'memory'")
+		errs = append(errs, "CACHE_DRIVER must be 'redis', 'memory' or 'db'")
 	}
 	if c.Cache.Redis.PoolSize < 1 {
 		errs = append(errs, "REDIS_POOL_SIZE must be >= 1")
