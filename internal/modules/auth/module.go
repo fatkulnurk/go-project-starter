@@ -62,6 +62,8 @@ type Dependencies struct {
 	RBAC     rbac.Service
 	Auditor  audit.Auditor
 	Settings Settings
+	// Location is the app timezone for SQL-written timestamps.
+	Location *time.Location
 }
 
 // Module wires the auth use cases and their adapters.
@@ -77,10 +79,10 @@ type Module struct {
 
 // New constructs the auth module.
 func New(deps Dependencies) *Module {
-	users := infrastructure.NewUserRepository(deps.DB, deps.DBDriver)
-	refreshTokens := infrastructure.NewRefreshTokenRepository(deps.DB, deps.DBDriver)
-	codes := infrastructure.NewVerificationCodeRepository(deps.DB, deps.DBDriver)
-	pending := infrastructure.NewPendingContactChangeRepository(deps.DB, deps.DBDriver)
+	users := infrastructure.NewUserRepository(deps.DB, deps.DBDriver, deps.Location)
+	refreshTokens := infrastructure.NewRefreshTokenRepository(deps.DB, deps.DBDriver, deps.Location)
+	codes := infrastructure.NewVerificationCodeRepository(deps.DB, deps.DBDriver, deps.Location)
+	pending := infrastructure.NewPendingContactChangeRepository(deps.DB, deps.DBDriver, deps.Location)
 
 	roles := rbacAdapter{svc: deps.RBAC}
 

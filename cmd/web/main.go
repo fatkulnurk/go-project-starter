@@ -18,6 +18,7 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
 	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/logger"
+	_ "time/tzdata" // embed IANA timezone data so APP_TIMEZONE works anywhere
 )
 
 func main() {
@@ -35,7 +36,7 @@ func run() error {
 	log := logger.New(cfg.Environment)
 	slog.SetDefault(log)
 
-	clk := clock.Real{}
+	clk := clock.Real{Loc: cfg.Location()}
 
 	homepageModule := homepage.New(homepage.Dependencies{
 		Settings: homepage.Settings{

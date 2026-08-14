@@ -44,14 +44,13 @@ type User struct {
 
 // NewUser builds a user from registration input. At least one of email/phone
 // is required, and the password must already be hashed by the caller.
-func NewUser(name, email, phone, passwordHash string) (*User, error) {
+func NewUser(name, email, phone, passwordHash string, now time.Time) (*User, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, ErrInvalid
 	}
 	if strings.TrimSpace(email) == "" && strings.TrimSpace(phone) == "" {
 		return nil, ErrInvalid
 	}
-	now := time.Now().UTC()
 	u := &User{
 		ID:           newID(),
 		Name:         name,

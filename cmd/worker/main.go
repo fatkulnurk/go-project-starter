@@ -19,6 +19,7 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/sms"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/token"
+	_ "time/tzdata" // embed IANA timezone data so APP_TIMEZONE works anywhere
 )
 
 func main() {
@@ -71,7 +72,7 @@ func run() error {
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
 	hasher := hash.NewHasher(0)
-	clk := clock.Real{}
+	clk := clock.Real{Loc: cfg.Location()}
 	devMode := cfg.Environment != config.EnvironmentProduction
 
 	authModule := auth.New(auth.Dependencies{
@@ -84,6 +85,7 @@ func run() error {
 		Tokens:   tokenManager,
 		Hasher:   hasher,
 		Clock:    clk,
+		Location: cfg.Location(),
 		Settings: auth.Settings{
 			AccessTokenTTL:        cfg.Auth.AccessTokenTTL,
 			RefreshTokenTTL:       cfg.Auth.RefreshTokenTTL,

@@ -17,8 +17,8 @@ import (
 type PendingContactChangeRepository struct{ base }
 
 // NewPendingContactChangeRepository builds a pending contact change repository.
-func NewPendingContactChangeRepository(db *sql.DB, driver string) *PendingContactChangeRepository {
-	return &PendingContactChangeRepository{base{db: db, driver: driver}}
+func NewPendingContactChangeRepository(db *sql.DB, driver string, loc *time.Location) *PendingContactChangeRepository {
+	return &PendingContactChangeRepository{base{db: db, driver: driver, loc: loc}}
 }
 
 const pendingChangeColumns = `id, user_id, channel, old_value, new_value, status, applied_at, created_at, updated_at`
@@ -47,7 +47,7 @@ func (r *PendingContactChangeRepository) MarkApplied(ctx context.Context, id str
 	_, err := r.db.ExecContext(ctx, r.q(`
 		UPDATE pending_contact_changes SET status = 'applied', applied_at = ?, updated_at = ?
 		WHERE id = ? AND status = 'pending'`),
-		appliedAt, time.Now().UTC(), id)
+		appliedAt, r.now(), id)
 	return err
 }
 

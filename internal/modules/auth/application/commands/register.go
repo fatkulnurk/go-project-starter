@@ -84,7 +84,7 @@ func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*Register
 	if err != nil {
 		return nil, err
 	}
-	user, err := domain.NewUser(cmd.Name, cmd.Email, cmd.Phone, passwordHash)
+	user, err := domain.NewUser(cmd.Name, cmd.Email, cmd.Phone, passwordHash, uc.clock.Now())
 	if err != nil {
 		return nil, err
 	}

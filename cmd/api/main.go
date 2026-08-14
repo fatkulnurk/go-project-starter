@@ -28,6 +28,7 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/sms"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/storage"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/token"
+	_ "time/tzdata" // embed IANA timezone data so APP_TIMEZONE works anywhere
 )
 
 func main() {
@@ -45,7 +46,7 @@ func run() error {
 	log := logger.New(cfg.Environment)
 	slog.SetDefault(log)
 
-	clk := clock.Real{}
+	clk := clock.Real{Loc: cfg.Location()}
 	devMode := cfg.Environment != config.EnvironmentProduction
 
 	// --- infrastructure -----------------------------------------------------
@@ -84,7 +85,7 @@ func run() error {
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
 	hasher := hash.NewHasher(0)
-	auditor := audit.New(db, cfg.Database.Driver)
+	auditor := audit.New(db, cfg.Database.Driver, cfg.Location())
 
 	// --- modules ------------------------------------------------------------
 	rbacModule := rbac.New(rbac.Dependencies{
@@ -107,6 +108,7 @@ func run() error {
 		Clock:    clk,
 		RBAC:     rbacModule.Service(),
 		Auditor:  auditor,
+		Location: cfg.Location(),
 		Settings: auth.Settings{
 			AccessTokenTTL:        cfg.Auth.AccessTokenTTL,
 			RefreshTokenTTL:       cfg.Auth.RefreshTokenTTL,
@@ -132,6 +134,7 @@ func run() error {
 		Disk:          cfg.Storage.Driver,
 		Auditor:       auditor,
 		MaxUploadSize: cfg.Media.MaxUploadSize,
+		Location:      cfg.Location(),
 	})
 
 	// Bootstrap default roles/permissions and assign the super admin.

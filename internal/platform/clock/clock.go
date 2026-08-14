@@ -8,11 +8,16 @@ type Clock interface {
 	Now() time.Time
 }
 
-// Real is the production clock.
-type Real struct{}
+// Real is the production clock. Loc is the app timezone; nil means UTC.
+type Real struct{ Loc *time.Location }
 
-// Now returns the current UTC time.
-func (Real) Now() time.Time { return time.Now().UTC() }
+// Now returns the current time in the configured location.
+func (r Real) Now() time.Time {
+	if r.Loc == nil {
+		return time.Now().UTC()
+	}
+	return time.Now().In(r.Loc)
+}
 
 // Fixed is a clock pinned to a specific instant (tests).
 type Fixed struct{ T time.Time }

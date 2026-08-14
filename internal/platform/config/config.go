@@ -38,11 +38,12 @@ const (
 
 // Environment variable keys.
 const (
-	envAppEnv     = "APP_ENV"
-	envAppPort    = "APP_PORT"
-	envWebPort    = "WEB_PORT"
-	envAppBaseURL = "APP_BASE_URL"
-	envAppName    = "APP_NAME"
+	envAppEnv      = "APP_ENV"
+	envAppPort     = "APP_PORT"
+	envWebPort     = "WEB_PORT"
+	envAppBaseURL  = "APP_BASE_URL"
+	envAppName     = "APP_NAME"
+	envAppTimeZone = "APP_TIMEZONE"
 
 	envDBDriver   = "DB_DRIVER"
 	envDBHost     = "DB_HOST"
@@ -132,6 +133,7 @@ const (
 	defaultWebPort               = 8081
 	defaultBaseURL               = "http://localhost:8080"
 	defaultAppName               = "Go Project Starter"
+	defaultTimeZone              = "UTC"
 	defaultDBDriver              = DriverMySQL
 	defaultDBHost                = "localhost"
 	defaultDBPort                = 3306
@@ -192,6 +194,9 @@ type Config struct {
 	WebPort int
 	BaseURL string
 	AppName string
+	// TimeZone is an IANA location name (e.g. "UTC", "Asia/Jakarta") the
+	// whole app follows: DB sessions, clock and stored timestamps.
+	TimeZone string
 
 	// TrustedProxies lists CIDRs/IPs whose X-Forwarded-For header is trusted.
 	TrustedProxies []string
@@ -238,6 +243,21 @@ type DatabaseConfig struct {
 	// "verify-ca", "verify-full" (postgres) or "disable", "require",
 	// "skip-verify" (mysql).
 	SSLMode string
+	// TimeZone is the IANA location the DB session runs in, so
+	// CURRENT_TIMESTAMP matches Go-written timestamps. Mirrors Config.
+	TimeZone string
+}
+
+// Location resolves TimeZone to a *time.Location, falling back to UTC when
+// the value is empty. Callers use it for the clock and DB session setup.
+func (c Config) Location() *time.Location {
+	if c.TimeZone == "" {
+		return time.UTC
+	}
+	if loc, err := time.LoadLocation(c.TimeZone); err == nil {
+		return loc
+	}
+	return time.UTC
 }
 
 // CacheConfig selects the cache driver.
@@ -428,6 +448,7 @@ func Load() (Config, error) {
 		WebPort:     b.int(envWebPort, defaultWebPort),
 		BaseURL:     b.str(envAppBaseURL, defaultBaseURL),
 		AppName:     b.str(envAppName, defaultAppName),
+		TimeZone:    b.str(envAppTimeZone, defaultTimeZone),
 
 		TrustedProxies:     b.list(envTrustedProxies),
 		CORSAllowedOrigins: b.list(envCORSAllowedOrigin),
@@ -444,6 +465,7 @@ func Load() (Config, error) {
 			ConnMaxLifetime: b.duration(envDBConnMaxLifetime, defaultDBConnMaxLifetime),
 			ConnMaxIdleTime: b.duration(envDBConnMaxIdleTime, defaultDBConnMaxIdleTime),
 			SSLMode:         b.str(envDBSSLMode, defaultDBSSLMode),
+			TimeZone:        b.str(envAppTimeZone, defaultTimeZone),
 		},
 		Cache: CacheConfig{
 			Driver: b.str(envCacheDriver, defaultCacheDriver),
@@ -554,6 +576,9 @@ func (c Config) validate() []string {
 	}
 	if _, err := url.ParseRequestURI(c.BaseURL); err != nil || !strings.Contains(c.BaseURL, "://") {
 		errs = append(errs, fmt.Sprintf("APP_BASE_URL must be an absolute URL, got %q", c.BaseURL))
+	}
+	if _, err := time.LoadLocation(c.TimeZone); err != nil {
+		errs = append(errs, fmt.Sprintf("APP_TIMEZONE must be a valid IANA location (e.g. UTC, Asia/Jakarta), got %q", c.TimeZone))
 	}
 
 	switch c.Database.Driver {

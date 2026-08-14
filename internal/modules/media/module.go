@@ -2,6 +2,7 @@ package media
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
@@ -23,6 +24,8 @@ type Dependencies struct {
 	Disk          string
 	Auditor       audit.Auditor
 	MaxUploadSize int64
+	// Location is the app timezone (nil means UTC).
+	Location *time.Location
 }
 
 // Module wires the media use cases and their adapters.
@@ -36,7 +39,7 @@ func New(deps Dependencies) *Module {
 	repo := infrastructure.NewMediaRepository(deps.DB, deps.DBDriver)
 	return &Module{
 		API: API{
-			AddMedia:    commands.NewAddMedia(repo, deps.Storage, deps.Disk, deps.Auditor, clock.Real{}),
+			AddMedia:    commands.NewAddMedia(repo, deps.Storage, deps.Disk, deps.Auditor, clock.Real{Loc: deps.Location}),
 			RemoveMedia: commands.NewRemoveMedia(repo, deps.Storage, deps.Auditor),
 			GetMedia:    queries.NewGetMedia(repo, deps.Storage),
 			ListByModel: queries.NewListByModel(repo),

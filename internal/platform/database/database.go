@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -48,13 +49,14 @@ func DSN(cfg config.DatabaseConfig) (string, string) {
 	switch cfg.Driver {
 	case config.DriverPostgres:
 		return fmt.Sprintf(
-			"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode),
+			"postgres://%s:%s@%s:%d/%s?sslmode=%s&timezone=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode), escapeParam(cfg.TimeZone),
 		), "pgx"
 	default:
 		return fmt.Sprintf(
-			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC&tls=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, mysqlTLS(cfg.SSLMode),
+			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=%s&time_zone=%s&tls=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
+			escapeParam(cfg.TimeZone), mysqlTimeZoneParam(cfg.TimeZone), mysqlTLS(cfg.SSLMode),
 		), config.DriverMySQL
 	}
 }
@@ -63,12 +65,27 @@ func DSN(cfg config.DatabaseConfig) (string, string) {
 func MigrateURL(cfg config.DatabaseConfig) string {
 	switch cfg.Driver {
 	case config.DriverPostgres:
-		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode))
+		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&timezone=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, pgSSL(cfg.SSLMode), escapeParam(cfg.TimeZone))
 	default:
-		return fmt.Sprintf("mysql://%s:%s@tcp(%s:%d)/%s?tls=%s",
-			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, mysqlTLS(cfg.SSLMode))
+		return fmt.Sprintf("mysql://%s:%s@tcp(%s:%d)/%s?loc=%s&time_zone=%s&tls=%s",
+			cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name,
+			escapeParam(cfg.TimeZone), mysqlTimeZoneParam(cfg.TimeZone), mysqlTLS(cfg.SSLMode))
 	}
+}
+
+// escapeParam URL-encodes a query parameter value.
+func escapeParam(v string) string { return url.QueryEscape(v) }
+
+// mysqlTimeZoneParam builds the go-sql-driver time_zone parameter, which
+// requires the value to be quoted (e.g. time_zone='+00:00'). Named zones
+// (e.g. Asia/Jakarta) need the MySQL timezone tables to be loaded, while
+// UTC/offset values always work.
+func mysqlTimeZoneParam(tz string) string {
+	if tz == "UTC" || tz == "" {
+		return "%27%2B00%3A00%27" // '+00:00'
+	}
+	return "%27" + url.QueryEscape(tz) + "%27"
 }
 
 // pgSSL maps DB_SSL_MODE to a postgres sslmode value.

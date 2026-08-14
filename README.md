@@ -142,10 +142,12 @@ Everything is configured via environment variables — see `.env.example` for
 all keys. To swap a driver, change the corresponding `*_DRIVER` variable; the
 module code stays unchanged.
 
+- `APP_TIMEZONE` — IANA location (e.g. `Asia/Jakarta`), default `UTC`. The
+  whole app follows it: DB session, clock and Go-written timestamps.
 - `DB_DRIVER=mysql|postgres`
-- `CACHE_DRIVER=redis|memory`
+- `CACHE_DRIVER=redis|memory|db`
 - `STORAGE_DRIVER=local|s3`
 - `MAIL_DRIVER=log|smtp|ses`
 - `SMS_DRIVER=log|twilio`
-- `QUEUE_DRIVER=asynq`
+- `QUEUE_DRIVER=asynq|db`
 - `RBAC_CACHE_TTL`, `RBAC_BOOTSTRAP_SUPER_ADMIN_EMAIL`

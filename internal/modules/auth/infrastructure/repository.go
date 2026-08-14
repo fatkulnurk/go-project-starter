@@ -13,13 +13,23 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/database"
 )
 
-// base carries the shared pool and driver used by every repository type.
+// base carries the shared pool, driver and app timezone used by every
+// repository type.
 type base struct {
 	db     *sql.DB
 	driver string
+	loc    *time.Location
 }
 
 func (b base) q(query string) string { return database.Rebind(query, b.driver) }
+
+// now returns the current time in the app timezone (UTC when unset).
+func (b base) now() time.Time {
+	if b.loc == nil {
+		return time.Now().UTC()
+	}
+	return time.Now().In(b.loc)
+}
 
 // ---------------------------------------------------------------------------
 // Users
@@ -29,8 +39,8 @@ func (b base) q(query string) string { return database.Rebind(query, b.driver) }
 type UserRepository struct{ base }
 
 // NewUserRepository builds a user repository.
-func NewUserRepository(db *sql.DB, driver string) *UserRepository {
-	return &UserRepository{base{db: db, driver: driver}}
+func NewUserRepository(db *sql.DB, driver string, loc *time.Location) *UserRepository {
+	return &UserRepository{base{db: db, driver: driver, loc: loc}}
 }
 
 const userColumns = `id, name, email, phone, password_hash, email_verified_at, phone_verified_at, status, created_at, updated_at`
@@ -138,8 +148,8 @@ func (u sqlUser) toDomain() *domain.User {
 type RefreshTokenRepository struct{ base }
 
 // NewRefreshTokenRepository builds a refresh token repository.
-func NewRefreshTokenRepository(db *sql.DB, driver string) *RefreshTokenRepository {
-	return &RefreshTokenRepository{base{db: db, driver: driver}}
+func NewRefreshTokenRepository(db *sql.DB, driver string, loc *time.Location) *RefreshTokenRepository {
+	return &RefreshTokenRepository{base{db: db, driver: driver, loc: loc}}
 }
 
 const refreshColumns = `id, user_id, token_hash, expires_at, revoked_at, created_at, updated_at`
@@ -161,13 +171,15 @@ func (r *RefreshTokenRepository) FindByHash(ctx context.Context, tokenHash strin
 
 // RevokeByID implements domain.RefreshTokenRepository.
 func (r *RefreshTokenRepository) RevokeByID(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE id = ? AND revoked_at IS NULL`), time.Now().UTC(), time.Now().UTC(), id)
+	now := r.now()
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE id = ? AND revoked_at IS NULL`), now, now, id)
 	return err
 }
 
 // RevokeByUserID implements domain.RefreshTokenRepository.
 func (r *RefreshTokenRepository) RevokeByUserID(ctx context.Context, userID string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL`), time.Now().UTC(), time.Now().UTC(), userID)
+	now := r.now()
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL`), now, now, userID)
 	return err
 }
 
@@ -196,8 +208,8 @@ func scanRefreshToken(row *sql.Row) (*domain.RefreshToken, error) {
 type VerificationCodeRepository struct{ base }
 
 // NewVerificationCodeRepository builds a verification code repository.
-func NewVerificationCodeRepository(db *sql.DB, driver string) *VerificationCodeRepository {
-	return &VerificationCodeRepository{base{db: db, driver: driver}}
+func NewVerificationCodeRepository(db *sql.DB, driver string, loc *time.Location) *VerificationCodeRepository {
+	return &VerificationCodeRepository{base{db: db, driver: driver, loc: loc}}
 }
 
 const codeColumns = `id, user_id, channel, purpose, code_hash, attempts, expires_at, consumed_at, created_at, updated_at`
@@ -219,7 +231,7 @@ func (r *VerificationCodeRepository) FindLatestActive(ctx context.Context, userI
 		WHERE user_id = ? AND purpose = ? AND channel = ?
 		  AND consumed_at IS NULL AND expires_at > ?
 		ORDER BY created_at DESC LIMIT 1`,
-		userID, string(purpose), string(channel), time.Now().UTC())
+		userID, string(purpose), string(channel), r.now())
 }
 
 // FindActiveByHash implements domain.VerificationCodeRepository.
@@ -229,27 +241,29 @@ func (r *VerificationCodeRepository) FindActiveByHash(ctx context.Context, purpo
 		WHERE purpose = ? AND code_hash = ?
 		  AND consumed_at IS NULL AND expires_at > ?
 		ORDER BY created_at DESC LIMIT 1`,
-		string(purpose), codeHash, time.Now().UTC())
+		string(purpose), codeHash, r.now())
 }
 
 // Consume implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) Consume(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET consumed_at = ?, updated_at = ? WHERE id = ? AND consumed_at IS NULL`), time.Now().UTC(), time.Now().UTC(), id)
+	now := r.now()
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET consumed_at = ?, updated_at = ? WHERE id = ? AND consumed_at IS NULL`), now, now, id)
 	return err
 }
 
 // IncrementAttempts implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) IncrementAttempts(ctx context.Context, id string, attempts int) error {
-	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET attempts = ?, updated_at = ? WHERE id = ?`), attempts, time.Now().UTC(), id)
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE verification_codes SET attempts = ?, updated_at = ? WHERE id = ?`), attempts, r.now(), id)
 	return err
 }
 
 // InvalidateByUser implements domain.VerificationCodeRepository.
 func (r *VerificationCodeRepository) InvalidateByUser(ctx context.Context, userID string, purpose domain.Purpose) error {
+	now := r.now()
 	_, err := r.db.ExecContext(ctx, r.q(`
 		UPDATE verification_codes SET consumed_at = ?, updated_at = ?
 		WHERE user_id = ? AND purpose = ? AND consumed_at IS NULL`),
-		time.Now().UTC(), time.Now().UTC(), userID, string(purpose))
+		now, now, userID, string(purpose))
 	return err
 }
 

@@ -17,11 +17,20 @@ import (
 type SQLAuditor struct {
 	db     *sql.DB
 	driver string
+	loc    *time.Location
 }
 
 // New builds a SQL-backed Auditor for the given pool.
-func New(db *sql.DB, driver string) *SQLAuditor {
-	return &SQLAuditor{db: db, driver: driver}
+func New(db *sql.DB, driver string, loc *time.Location) *SQLAuditor {
+	return &SQLAuditor{db: db, driver: driver, loc: loc}
+}
+
+// now returns the current time in the app timezone (UTC when unset).
+func (a *SQLAuditor) now() time.Time {
+	if a.loc == nil {
+		return time.Now().UTC()
+	}
+	return time.Now().In(a.loc)
 }
 
 // Record inserts one audit entry.
@@ -35,11 +44,12 @@ func (a *SQLAuditor) Record(ctx context.Context, entry audit.Entry) error {
 		return err
 	}
 	const q = `INSERT INTO audit_logs (id, subject_type, subject_id, action, old_values, new_values, actor_type, actor_id, ip_address, user_agent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	now := a.now()
 	_, err = a.db.ExecContext(ctx, database.Rebind(q, a.driver),
 		newID(), entry.SubjectType, entry.SubjectID, string(entry.Action),
 		oldJSON, newJSON, string(entry.Actor.Type), nullStr(entry.Actor.ID),
 		nullStr(entry.Actor.IPAddress), nullStr(entry.Actor.UserAgent),
-		time.Now().UTC(), time.Now().UTC(),
+		now, now,
 	)
 	return err
 }
