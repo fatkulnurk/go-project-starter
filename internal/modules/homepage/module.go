@@ -1,8 +1,8 @@
 package homepage
 
 import (
-	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/api"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapters/web"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapter/api"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapter/web"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/application"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/view"
 	"github.com/go-chi/chi/v5"

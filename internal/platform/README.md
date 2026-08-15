@@ -5,7 +5,7 @@ implements something behind a contract from `internal/application` (or is a
 framework-bound helper used by module adapters).
 
 The business modules never import these packages directly except in their
-`adapters/` and `infrastructure/` layers. The composition roots (`cmd/`) pick a
+`adapter/` and `infrastructure/` layers. The composition roots (`cmd/`) pick a
 driver per environment; modules only ever see the interface.
 
 ## What lives here
@@ -24,7 +24,7 @@ driver per environment; modules only ever see the interface.
 | `queue`             | asynq client/server glue behind `queue.Enqueuer`                   |
 | `sms`               | `sms.Sender` implementations: `log`, `twilio`                      |
 | `storage`           | `storage.Storage` implementations: `local`, `s3` + factory         |
-| `audit`             | `audit.Auditor` implementation: `SQLAuditor` (writes `audit_logs`)  |
+| `audit`             | `audit.Recorder` implementation: `SQLRecorder` (writes `audit_logs`)|
 | `view`              | shared base HTML layout (`NewLayout`) for browser pages            |
 
 ## What belongs here

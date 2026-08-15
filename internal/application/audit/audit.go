@@ -1,6 +1,6 @@
 // Package audit defines the cross-cutting audit contract: recording who did
-// what to which record. Implementations live behind the Auditor interface (SQL,
-// file, cloud) so business modules never depend on a storage library.
+// what to which record. Implementations live behind the Recorder interface
+// (SQL, file, cloud) so business modules never depend on a storage library.
 package audit
 
 import "context"
@@ -43,8 +43,8 @@ type Entry struct {
 	Actor       Actor
 }
 
-// Auditor records audit entries.
-type Auditor interface {
+// Recorder persists audit entries.
+type Recorder interface {
 	// Record persists one audit entry.
 	Record(ctx context.Context, entry Entry) error
 }

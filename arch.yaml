@@ -43,7 +43,7 @@ allow:
           - internal/platform/**
 
   - packages:
-      - internal/modules/**/adapters/**
+      - internal/modules/**/adapter/**
     to:
       - packages:
           - internal/modules/**/application/**

@@ -73,7 +73,7 @@ func NewUserSeeder(deps Deps, users []SeedUser) *UserSeeder {
 	return &UserSeeder{deps: deps, users: users}
 }
 
-// Run implements seed.Seeder.
+// Run implements seed.Seed.
 func (s *UserSeeder) Run(ctx context.Context) error {
 	repo := infrastructure.NewUserRepository(s.deps.DB, s.deps.DBDriver, s.deps.Location)
 	for _, u := range s.users {
@@ -84,7 +84,7 @@ func (s *UserSeeder) Run(ctx context.Context) error {
 	return nil
 }
 
-var _ seed.Seeder = (*UserSeeder)(nil)
+var _ seed.Seed = (*UserSeeder)(nil)
 
 func seedOneUser(ctx context.Context, deps Deps, repo domain.UserRepository, u SeedUser) error {
 	name := strings.TrimSpace(u.Name)

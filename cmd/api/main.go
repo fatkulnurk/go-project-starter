@@ -83,7 +83,7 @@ func run() error {
 	}
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
-	hasher := hash.NewHasher(0)
+	hasher := hash.NewHash(0)
 	auditor := audit.New(db, cfg.Database.Driver, cfg.Location())
 
 	// --- modules ------------------------------------------------------------

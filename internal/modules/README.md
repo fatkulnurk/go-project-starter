@@ -10,13 +10,13 @@ adapters, all wired together in `cmd/`.
 ```text
 internal/modules/<name>/
 ├── domain/            pure entities, value objects, repo interfaces, sentinels
-├── application/       use cases: commands/, queries/ (+ module-local ports)
+├── application/       use cases: command/, query/ (+ module-local port)
 ├── infrastructure/    repository implementations (database/sql)
-├── templates/         embedded message/page templates, split by channel
+├── template/         embedded message/page templates, split by channel
 │   ├── web/           HTML pages rendered by web/api handlers
 │   ├── email/         email HTML + text (subject/body)
 │   └── sms/           SMS body text
-├── adapters/
+├── adapter/
 │   ├── api/           HTTP handlers + DTOs for JSON APIs (no business logic)
 │   ├── web/           HTTP handlers rendering HTML pages (non-JSON, e.g. homepage)
 │   └── queue/         background task handlers (if the module has any)
@@ -31,7 +31,7 @@ internal/modules/<name>/
 
 ### Content templates vs. platform layouts
 
-Each module keeps its own content templates in a root `templates/` package,
+Each module keeps its own content templates in a root `template/` package,
 split by channel (`web/` for pages, `email/` for email HTML + text, `sms/` for
 SMS bodies). Those are the *what* — module-owned copy. The *how* — shared
 layouts — lives in `internal/platform` (`view` for pages, `mailer` for email)
@@ -40,7 +40,7 @@ and is reused via `ParseFS`.
 ### Uniform skeleton
 
 Every module keeps the same folder skeleton (`domain/`, `application/`,
-`infrastructure/`, `adapters/`, `module.go`, `api.go`, `doc.go`) even when a
+`infrastructure/`, `adapter/`, `module.go`, `api.go`, `doc.go`) even when a
 layer has no code yet, so navigation is predictable. A layer that genuinely has
 no content documents that with a short package comment in a `doc.go` (see
 `homepage/`).
@@ -48,17 +48,17 @@ no content documents that with a short package comment in a `doc.go` (see
 ## Dependency rules inside a module
 
 ```text
-adapters/ ──► application/ ──► domain/
+adapter/ ──► application/ ──► domain/
 infrastructure/ ──► domain/
 ```
 
 - **domain**: pure Go, no SQL/HTTP/frameworks, no imports from this tree.
 - **application**: imports `domain`, `internal/application` (contracts), and
-  `internal/platform/clock`. No drivers, no `adapters`.
+  `internal/platform/clock`. No drivers, no `adapter`.
 - **infrastructure**: implements the domain repository interfaces with
   `database/sql` (+ `internal/platform/database`). SQL uses `?` placeholders,
   portability handled by `database.Rebind`.
-- **adapters/api**: only parses requests, calls one use case, renders the
+- **adapter/api**: only parses requests, calls one use case, renders the
   standardized response. Never contains business rules or SQL. Use `web/`
   instead when a module serves rendered HTML pages rather than a JSON API.
 
@@ -75,7 +75,7 @@ infrastructure/ ──► domain/
 1. Create the folder skeleton above.
 2. Write `domain/` first (entities + repository interfaces), then
    `application/` use cases against those interfaces.
-3. Implement repositories in `infrastructure/`, handlers in `adapters/api/`.
+3. Implement repositories in `infrastructure/`, handlers in `adapter/api/`.
 4. Expose use cases through `api.go` and anything other modules need as a
    narrow `Service` interface.
 5. Wire it in `cmd/api/main.go` (and `cmd/worker/main.go` if it has tasks).

@@ -13,7 +13,7 @@ must not import `internal/platform` or `internal/modules`.
 |-----------------|----------------------------------------------------------------|
 | `auth`          | identity contract: `Authenticator`, `Identity`, context helpers |
 | `authorization` | `Authorizer` ("may this caller do this action?")               |
-| `audit`         | polymorphic audit contract (`Auditor`, `Entry`, actor context) |
+| `audit`         | polymorphic audit contract (`Recorder`, `Entry`, actor context) |
 | `branding`      | shared brand data (`Common`) + template render helper          |
 | `cache`         | cache contract (`Get`, `Set`, `Delete`, `Increment`, ...)      |
 | `hash`          | password hashing contract                                       |

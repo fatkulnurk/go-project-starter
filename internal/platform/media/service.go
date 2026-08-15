@@ -17,7 +17,7 @@ type Deps struct {
 	Storage      storage.Storage
 	URLGenerator storage.URLGenerator
 	Disk         string
-	Auditor      audit.Auditor
+	Auditor      audit.Recorder
 	Clock        clock.Clock
 }
 
@@ -27,7 +27,7 @@ type Service struct {
 	store   storage.Storage
 	urlGen  storage.URLGenerator
 	disk    string
-	auditor audit.Auditor
+	auditor audit.Recorder
 	clock   clock.Clock
 }
 

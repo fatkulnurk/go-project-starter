@@ -8,10 +8,10 @@ import (
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/cache"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/adapters/api"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/adapter/api"
 	rbaccache "github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/cache"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/commands"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/queries"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/command"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/query"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/infrastructure"
 	"github.com/go-chi/chi/v5"
 )
@@ -22,7 +22,7 @@ type Dependencies struct {
 	DBDriver string
 	Cache    cache.Cache
 	CacheTTL time.Duration
-	Auditor  audit.Auditor
+	Auditor  audit.Recorder
 }
 
 // Module wires the RBAC use cases and their adapters.
@@ -43,19 +43,19 @@ func New(deps Dependencies) *Module {
 		pcache = rbaccache.NewPermissionCache(deps.Cache, deps.CacheTTL)
 	}
 
-	createRole := commands.NewCreateRole(roles, deps.Auditor)
-	createPermission := commands.NewCreatePermission(permissions, deps.Auditor)
-	updateRole := commands.NewUpdateRole(roles, pcache, deps.Auditor)
-	deleteRole := commands.NewDeleteRole(roles, pcache, deps.Auditor)
-	updatePermission := commands.NewUpdatePermission(permissions, pcache, deps.Auditor)
-	deletePermission := commands.NewDeletePermission(permissions, pcache, deps.Auditor)
-	assignRole := commands.NewAssignRole(roles, access, pcache, deps.Auditor)
-	revokeRole := commands.NewRevokeRole(roles, access, pcache, deps.Auditor)
-	grantPermission := commands.NewGrantPermission(permissions, access, pcache, deps.Auditor)
-	revokePermission := commands.NewRevokePermission(permissions, access, pcache, deps.Auditor)
-	syncRolePermissions := commands.NewSyncRolePermissions(roles, permissions, pcache, deps.Auditor)
-	getUser := queries.NewGetUser(access, pcache)
-	getRole := queries.NewGetRole(roles)
+	createRole := command.NewCreateRole(roles, deps.Auditor)
+	createPermission := command.NewCreatePermission(permissions, deps.Auditor)
+	updateRole := command.NewUpdateRole(roles, pcache, deps.Auditor)
+	deleteRole := command.NewDeleteRole(roles, pcache, deps.Auditor)
+	updatePermission := command.NewUpdatePermission(permissions, pcache, deps.Auditor)
+	deletePermission := command.NewDeletePermission(permissions, pcache, deps.Auditor)
+	assignRole := command.NewAssignRole(roles, access, pcache, deps.Auditor)
+	revokeRole := command.NewRevokeRole(roles, access, pcache, deps.Auditor)
+	grantPermission := command.NewGrantPermission(permissions, access, pcache, deps.Auditor)
+	revokePermission := command.NewRevokePermission(permissions, access, pcache, deps.Auditor)
+	syncRolePermissions := command.NewSyncRolePermissions(roles, permissions, pcache, deps.Auditor)
+	getUser := query.NewGetUser(access, pcache)
+	getRole := query.NewGetRole(roles)
 
 	svc := &service{getUser: getUser, assignRole: assignRole}
 
@@ -74,8 +74,8 @@ func New(deps Dependencies) *Module {
 			SyncRolePermissions: syncRolePermissions,
 			GetUser:             getUser,
 			GetRole:             getRole,
-			ListRoles:           queries.NewListRoles(roles),
-			ListPermissions:     queries.NewListPermissions(permissions),
+			ListRoles:           query.NewListRoles(roles),
+			ListPermissions:     query.NewListPermissions(permissions),
 		},
 		svc:   svc,
 		authz: &Authorizer{svc: svc},

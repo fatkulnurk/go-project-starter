@@ -1,4 +1,4 @@
-// Package audit provides a SQL-backed Auditor implementation writing to the
+// Package audit provides a SQL-backed Recorder implementation writing to the
 // audit_logs table via database/sql.
 package audit
 
@@ -13,20 +13,20 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/database"
 )
 
-// SQLAuditor writes audit entries to the audit_logs table.
-type SQLAuditor struct {
+// SQLRecorder writes audit entries to the audit_logs table.
+type SQLRecorder struct {
 	db     *sql.DB
 	driver string
 	loc    *time.Location
 }
 
-// New builds a SQL-backed Auditor for the given pool.
-func New(db *sql.DB, driver string, loc *time.Location) *SQLAuditor {
-	return &SQLAuditor{db: db, driver: driver, loc: loc}
+// New builds a SQL-backed Recorder for the given pool.
+func New(db *sql.DB, driver string, loc *time.Location) *SQLRecorder {
+	return &SQLRecorder{db: db, driver: driver, loc: loc}
 }
 
 // now returns the current time in the app timezone (UTC when unset).
-func (a *SQLAuditor) now() time.Time {
+func (a *SQLRecorder) now() time.Time {
 	if a.loc == nil {
 		return time.Now().UTC()
 	}
@@ -34,7 +34,7 @@ func (a *SQLAuditor) now() time.Time {
 }
 
 // Record inserts one audit entry.
-func (a *SQLAuditor) Record(ctx context.Context, entry audit.Entry) error {
+func (a *SQLRecorder) Record(ctx context.Context, entry audit.Entry) error {
 	oldJSON, err := marshalJSON(entry.OldValues)
 	if err != nil {
 		return err

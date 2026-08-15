@@ -8,28 +8,28 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Hasher hashes passwords with bcrypt.
-type Hasher struct {
+// Hash hashes passwords with bcrypt.
+type Hash struct {
 	cost int
 }
 
-var _ apphash.PasswordHasher = (*Hasher)(nil)
+var _ apphash.PasswordHasher = (*Hash)(nil)
 
-// NewHasher builds a bcrypt hasher (cost 0 = DefaultCost).
-func NewHasher(cost int) *Hasher {
+// NewHash builds a bcrypt hasher (cost 0 = DefaultCost).
+func NewHash(cost int) *Hash {
 	if cost == 0 {
 		cost = bcrypt.DefaultCost
 	}
-	return &Hasher{cost: cost}
+	return &Hash{cost: cost}
 }
 
 // Hash implements apphash.PasswordHasher.
-func (h *Hasher) Hash(_ context.Context, password string) (string, error) {
+func (h *Hash) Hash(_ context.Context, password string) (string, error) {
 	b, err := bcrypt.GenerateFromPassword([]byte(password), h.cost)
 	return string(b), err
 }
 
 // Compare implements apphash.PasswordHasher.
-func (h *Hasher) Compare(_ context.Context, password, storedHash string) bool {
+func (h *Hash) Compare(_ context.Context, password, storedHash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)) == nil
 }

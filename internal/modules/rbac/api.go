@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/commands"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/queries"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/command"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/query"
 )
 
 // Service is the public surface other modules may depend on. It resolves
@@ -19,26 +19,26 @@ type Service interface {
 
 // API exposes the module's use cases.
 type API struct {
-	CreateRole          *commands.CreateRole
-	CreatePermission    *commands.CreatePermission
-	UpdateRole          *commands.UpdateRole
-	DeleteRole          *commands.DeleteRole
-	UpdatePermission    *commands.UpdatePermission
-	DeletePermission    *commands.DeletePermission
-	AssignRole          *commands.AssignRole
-	RevokeRole          *commands.RevokeRole
-	GrantPermission     *commands.GrantPermission
-	RevokePermission    *commands.RevokePermission
-	SyncRolePermissions *commands.SyncRolePermissions
-	GetUser             *queries.GetUser
-	GetRole             *queries.GetRole
-	ListRoles           *queries.ListRoles
-	ListPermissions     *queries.ListPermissions
+	CreateRole          *command.CreateRole
+	CreatePermission    *command.CreatePermission
+	UpdateRole          *command.UpdateRole
+	DeleteRole          *command.DeleteRole
+	UpdatePermission    *command.UpdatePermission
+	DeletePermission    *command.DeletePermission
+	AssignRole          *command.AssignRole
+	RevokeRole          *command.RevokeRole
+	GrantPermission     *command.GrantPermission
+	RevokePermission    *command.RevokePermission
+	SyncRolePermissions *command.SyncRolePermissions
+	GetUser             *query.GetUser
+	GetRole             *query.GetRole
+	ListRoles           *query.ListRoles
+	ListPermissions     *query.ListPermissions
 }
 
 type service struct {
-	getUser    *queries.GetUser
-	assignRole *commands.AssignRole
+	getUser    *query.GetUser
+	assignRole *command.AssignRole
 }
 
 func (s *service) RolesAndPermissions(ctx context.Context, userID string) ([]string, []string, error) {
@@ -81,5 +81,5 @@ func (s *service) HasRole(ctx context.Context, userID, role string) (bool, error
 }
 
 func (s *service) AssignRole(ctx context.Context, userID, roleName string) error {
-	return s.assignRole.Execute(ctx, commands.AssignRoleCommand{UserID: userID, Role: roleName})
+	return s.assignRole.Execute(ctx, command.AssignRoleCommand{UserID: userID, Role: roleName})
 }

@@ -53,7 +53,7 @@ func run() error {
 	defer db.Close()
 
 	clk := clock.Real{Loc: cfg.Location()}
-	hasher := hash.NewHasher(0)
+	hasher := hash.NewHash(0)
 
 	// --- DatabaseSeeder: register every module seeder --------------------
 	reg := seed.New()

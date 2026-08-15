@@ -76,7 +76,7 @@ func run() error {
 	defer queueClient.Close()
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
-	hasher := hash.NewHasher(0)
+	hasher := hash.NewHash(0)
 	clk := clock.Real{Loc: cfg.Location()}
 	devMode := cfg.Environment != config.EnvironmentProduction
 

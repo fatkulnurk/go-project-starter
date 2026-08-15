@@ -9,7 +9,7 @@ import (
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/seed"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/commands"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/command"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/infrastructure"
 )
 
@@ -17,11 +17,11 @@ import (
 // well-known roles and permissions that must always exist. They live here so
 // the module's Bootstrap, the seeders and cmd/seed share one definition.
 var (
-	DefaultRoles = []commands.BootstrapRole{
+	DefaultRoles = []command.BootstrapRole{
 		{Code: authorization.RoleSuperAdmin, Name: "Super Admin"},
 		{Code: authorization.RoleUser, Name: "User"},
 	}
-	DefaultPermissions = []commands.BootstrapPermission{
+	DefaultPermissions = []command.BootstrapPermission{
 		{Code: authorization.PermissionManageRBAC, Group: "RBAC", Name: "Manage RBAC"},
 	}
 )
@@ -32,12 +32,12 @@ var (
 type RolesPermissionsSeeder struct {
 	db               *sql.DB
 	dbDriver         string
-	extraRoles       []commands.BootstrapRole
-	extraPermissions []commands.BootstrapPermission
+	extraRoles       []command.BootstrapRole
+	extraPermissions []command.BootstrapPermission
 }
 
 // NewRolesPermissionsSeeder builds the seeder. Extras may be nil.
-func NewRolesPermissionsSeeder(db *sql.DB, dbDriver string, extraRoles []commands.BootstrapRole, extraPermissions []commands.BootstrapPermission) *RolesPermissionsSeeder {
+func NewRolesPermissionsSeeder(db *sql.DB, dbDriver string, extraRoles []command.BootstrapRole, extraPermissions []command.BootstrapPermission) *RolesPermissionsSeeder {
 	return &RolesPermissionsSeeder{db: db, dbDriver: dbDriver, extraRoles: extraRoles, extraPermissions: extraPermissions}
 }
 
@@ -47,15 +47,15 @@ func Register(reg *seed.Registry, db *sql.DB, dbDriver string) {
 	reg.Register("rbac.roles_permissions", NewRolesPermissionsSeeder(db, dbDriver, nil, nil))
 }
 
-// Run implements seed.Seeder.
+// Run implements seed.Seed.
 func (s *RolesPermissionsSeeder) Run(ctx context.Context) error {
 	roles := infrastructure.NewRoleRepository(s.db, s.dbDriver)
 	permissions := infrastructure.NewPermissionRepository(s.db, s.dbDriver)
-	bootstrap := commands.NewBootstrap(roles, permissions, nil, nil)
-	return bootstrap.Execute(ctx, commands.BootstrapOptions{
-		DefaultRoles:       append(append([]commands.BootstrapRole{}, DefaultRoles...), s.extraRoles...),
-		DefaultPermissions: append(append([]commands.BootstrapPermission{}, DefaultPermissions...), s.extraPermissions...),
+	bootstrap := command.NewBootstrap(roles, permissions, nil, nil)
+	return bootstrap.Execute(ctx, command.BootstrapOptions{
+		DefaultRoles:       append(append([]command.BootstrapRole{}, DefaultRoles...), s.extraRoles...),
+		DefaultPermissions: append(append([]command.BootstrapPermission{}, DefaultPermissions...), s.extraPermissions...),
 	})
 }
 
-var _ seed.Seeder = (*RolesPermissionsSeeder)(nil)
+var _ seed.Seed = (*RolesPermissionsSeeder)(nil)

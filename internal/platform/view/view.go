@@ -1,4 +1,4 @@
-// Package view renders HTML pages (browser views) from embedded Go templates.
+// Package view renders HTML pages (browser views) from embedded Go template.
 // It owns the shared base layout — the "how" of every page — while business
 // modules attach their own content templates via ParseFS, mirroring the email
 // layout in internal/platform/mailer.

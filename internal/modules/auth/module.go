@@ -18,10 +18,10 @@ import (
 	appaqueue "github.com/fatkulnurk/go-project-starter/internal/application/queue"
 	"github.com/fatkulnurk/go-project-starter/internal/application/sms"
 	"github.com/fatkulnurk/go-project-starter/internal/application/token"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/api"
-	queueadapter "github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapters/queue"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/commands"
-	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/queries"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapter/api"
+	queueadapter "github.com/fatkulnurk/go-project-starter/internal/modules/auth/adapter/queue"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/command"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/query"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/infrastructure"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
@@ -63,7 +63,7 @@ type Dependencies struct {
 	Hasher   hash.PasswordHasher
 	Clock    clock.Clock
 	RBAC     rbac.Service
-	Auditor  audit.Auditor
+	Auditor  audit.Recorder
 	Settings Settings
 	// Location is the app timezone for SQL-written timestamps.
 	Location *time.Location
@@ -80,8 +80,8 @@ type Module struct {
 	cache    cache.Cache
 	// processForgot and processMagic run in the worker: they resolve delivery
 	// requests to accounts and issue the reset code / magic link.
-	processForgot *commands.ProcessForgotPassword
-	processMagic  *commands.ProcessMagicLink
+	processForgot *command.ProcessForgotPassword
+	processMagic  *command.ProcessMagicLink
 }
 
 // New constructs the auth module.
@@ -93,29 +93,29 @@ func New(deps Dependencies) *Module {
 
 	roles := rbacAdapter{svc: deps.RBAC}
 
-	issuer := commands.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Auditor, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock)
-	rateLimiter := commands.NewLoginRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow)
-	forgotLimiter := commands.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:forgot")
-	magicLimiter := commands.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:magic")
+	issuer := command.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Auditor, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock)
+	rateLimiter := command.NewLoginRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow)
+	forgotLimiter := command.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:forgot")
+	magicLimiter := command.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:magic")
 
-	processForgot := commands.NewProcessForgotPassword(users, codes, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Clock)
-	processMagic := commands.NewProcessMagicLink(users, codes, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Clock)
+	processForgot := command.NewProcessForgotPassword(users, codes, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Clock)
+	processMagic := command.NewProcessMagicLink(users, codes, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Clock)
 
 	return &Module{
 		API: API{
-			Register:         commands.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
-			Login:            commands.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter),
-			MagicLinkRequest: commands.NewMagicLinkRequest(deps.Enqueuer, deps.Settings.MagicLinkTTL, magicLimiter),
-			MagicLinkVerify:  commands.NewMagicLinkVerify(codes, users, issuer),
-			VerifyEmail:      commands.NewVerifyEmail(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			VerifyPhone:      commands.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			ForgotPassword:   commands.NewForgotPassword(deps.Enqueuer, deps.Settings.OTPTTL, forgotLimiter),
-			ResetPassword:    commands.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			Refresh:          commands.NewRefresh(refreshTokens, users, issuer),
-			Logout:           commands.NewLogout(refreshTokens, deps.Auditor),
-			UpdateProfile:    commands.NewUpdateProfile(users, codes, pending, deps.Enqueuer, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode),
-			Profile:          queries.NewProfile(users, roles),
-			FindUserByEmail:  queries.NewFindUserByEmail(users),
+			Register:         command.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
+			Login:            command.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter),
+			MagicLinkRequest: command.NewMagicLinkRequest(deps.Enqueuer, deps.Settings.MagicLinkTTL, magicLimiter),
+			MagicLinkVerify:  command.NewMagicLinkVerify(codes, users, issuer),
+			VerifyEmail:      command.NewVerifyEmail(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
+			VerifyPhone:      command.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
+			ForgotPassword:   command.NewForgotPassword(deps.Enqueuer, deps.Settings.OTPTTL, forgotLimiter),
+			ResetPassword:    command.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
+			Refresh:          command.NewRefresh(refreshTokens, users, issuer),
+			Logout:           command.NewLogout(refreshTokens, deps.Auditor),
+			UpdateProfile:    command.NewUpdateProfile(users, codes, pending, deps.Enqueuer, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode),
+			Profile:          query.NewProfile(users, roles),
+			FindUserByEmail:  query.NewFindUserByEmail(users),
 		},
 		authn:         &authenticator{tokens: deps.Tokens, users: users},
 		mailer:        deps.Mailer,
@@ -197,7 +197,7 @@ type rbacAdapter struct {
 	svc rbac.Service
 }
 
-// RolesAndPermissions implements ports.Roles.
+// RolesAndPermissions implements port.Roles.
 func (a rbacAdapter) RolesAndPermissions(ctx context.Context, userID string) ([]string, []string, error) {
 	if a.svc == nil {
 		return nil, nil, nil
@@ -206,7 +206,7 @@ func (a rbacAdapter) RolesAndPermissions(ctx context.Context, userID string) ([]
 	return roles, permissions, err
 }
 
-// AssignDefaultRole implements ports.Roles.
+// AssignDefaultRole implements port.Roles.
 func (a rbacAdapter) AssignDefaultRole(ctx context.Context, userID string) error {
 	if a.svc == nil {
 		return nil

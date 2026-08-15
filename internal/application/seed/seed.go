@@ -9,10 +9,10 @@ import (
 	"fmt"
 )
 
-// Seeder mirrors Laravel's Seeder base class: a named unit of data
+// Seed mirrors Laravel's Seeder base class: a named unit of data
 // initialization. Run must be idempotent and safe to re-run — existing rows
 // are skipped, not failed.
-type Seeder interface {
+type Seed interface {
 	Run(ctx context.Context) error
 }
 
@@ -20,17 +20,17 @@ type Seeder interface {
 // DatabaseSeeder::call.
 type Registry struct {
 	names   []string
-	seeders map[string]Seeder
+	seeders map[string]Seed
 }
 
 // New builds an empty registry.
 func New() *Registry {
-	return &Registry{seeders: map[string]Seeder{}}
+	return &Registry{seeders: map[string]Seed{}}
 }
 
 // Register stores a seeder under a stable name. Duplicate names panic: they
 // are a wiring bug that must surface at startup, not at seed time.
-func (r *Registry) Register(name string, s Seeder) {
+func (r *Registry) Register(name string, s Seed) {
 	if _, ok := r.seeders[name]; ok {
 		panic("seed: duplicate seeder " + name)
 	}
