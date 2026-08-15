@@ -8,7 +8,6 @@ import (
 	"time"
 
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
-	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 	"github.com/fatkulnurk/go-project-starter/internal/application/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/commands"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/application/queries"
@@ -32,7 +31,6 @@ type Deps struct {
 	Profile          *queries.Profile
 	FindUserByEmail  *queries.FindUserByEmail
 	Authenticator    appauth.Authenticator
-	Authorizer       authorization.Authorizer
 	// Cache + rate limits protect the unauthenticated endpoints against
 	// brute force and message-bombing abuse.
 	Cache                 cache.Cache

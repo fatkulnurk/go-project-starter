@@ -6,26 +6,34 @@
 --   user_roles       -> roles held by a user (many-to-many)
 --   user_permissions -> extra permissions granted directly to a user (override/outside roles)
 -- Authorization for a request = permissions via the user's roles + direct user permissions.
+--
+-- Identity vs display:
+--   code       -> stable, unique, immutable identifier checked by the application
+--                 (seeding, protected roles/permissions, authorization middleware).
+--   group_name -> display grouping for permissions in the admin UI (e.g. 'RBAC').
+--   name       -> free-form display label, renameable without breaking authorization.
 -- =============================================================================
 
 -- =============================================================================
 -- TABLE: roles
--- Roles that can be assigned to users. The default roles ('admin', 'user')
+-- Roles that can be assigned to users. The default roles ('super_admin', 'user')
 -- are created during application bootstrap. All ids are app-generated UUID v7
 -- (36 chars).
 --
 -- Example data:
 --   id         = '0195c5d7-5c2f-7d00-8000-000000000001'  (UUID v7)
---   name       = 'admin' | 'user'         (unique)
+--   code       = 'super_admin' | 'user'   (unique, stable identifier)
+--   name       = 'Super Admin' | 'User'   (display label)
 --   created_at = '2026-01-15 10:30:00'
 --   updated_at = '2026-01-15 10:30:00'
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS roles (
     id         VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
-    name       VARCHAR(64)  NOT NULL,             -- role name (unique)
+    code       VARCHAR(64)  NOT NULL,             -- stable machine identifier (unique)
+    name       VARCHAR(64)  NOT NULL,             -- display label
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (name)
+    UNIQUE (code)
 );
 
 -- =============================================================================
@@ -34,16 +42,20 @@ CREATE TABLE IF NOT EXISTS roles (
 --
 -- Example data:
 --   id         = '0195c5d7-6d30-7d00-8000-000000000001'  (UUID v7)
---   name       = 'media.upload' | 'rbac.manage' | 'media.delete'   (unique)
+--   code       = 'media.upload' | 'rbac.manage'          (unique, stable identifier)
+--   group_name = 'Media' | 'RBAC'                        (display grouping)
+--   name       = 'Upload Media' | 'Manage RBAC'          (display label)
 --   created_at = '2026-01-15 10:30:00'
 --   updated_at = '2026-01-15 10:30:00'
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS permissions (
     id         VARCHAR(36)  NOT NULL PRIMARY KEY, -- UUID v7 (generated in app)
-    name       VARCHAR(64)  NOT NULL,             -- permission name (unique)
+    code       VARCHAR(64)  NOT NULL,             -- stable machine identifier (unique)
+    group_name VARCHAR(64)  NOT NULL DEFAULT 'General', -- display grouping
+    name       VARCHAR(64)  NOT NULL,             -- display label
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (name)
+    UNIQUE (code)
 );
 
 -- =============================================================================

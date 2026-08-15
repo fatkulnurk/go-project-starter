@@ -8,9 +8,12 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// CreatePermissionCommand creates a named permission.
+// CreatePermissionCommand creates a permission from a stable code, a display
+// group and a display name.
 type CreatePermissionCommand struct {
-	Name string
+	Code  string
+	Group string
+	Name  string
 }
 
 // CreatePermission persists a new permission.
@@ -26,18 +29,19 @@ func NewCreatePermission(permissions domain.PermissionRepository, auditor audit.
 
 // Execute runs the use case.
 func (uc *CreatePermission) Execute(ctx context.Context, cmd CreatePermissionCommand) error {
+	code := strings.TrimSpace(cmd.Code)
 	name := strings.TrimSpace(cmd.Name)
-	if name == "" {
+	if code == "" || name == "" {
 		return domain.ErrInvalid
 	}
-	existing, err := uc.permissions.FindByName(ctx, name)
+	existing, err := uc.permissions.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return domain.ErrConflict
 	}
-	perm, err := domain.NewPermission(name)
+	perm, err := domain.NewPermission(code, strings.TrimSpace(cmd.Group), name)
 	if err != nil {
 		return err
 	}
@@ -49,7 +53,7 @@ func (uc *CreatePermission) Execute(ctx context.Context, cmd CreatePermissionCom
 			SubjectType: "permissions",
 			SubjectID:   perm.ID,
 			Action:      audit.ActionCreated,
-			NewValues:   map[string]any{"name": perm.Name},
+			NewValues:   map[string]any{"code": perm.Code, "group": perm.Group, "name": perm.Name},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

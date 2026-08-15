@@ -9,7 +9,7 @@ import (
 )
 
 // Service is the public surface other modules may depend on. It resolves
-// roles and permissions for a user and grants roles.
+// roles and permissions (by code) for a user and grants roles (by code).
 type Service interface {
 	RolesAndPermissions(ctx context.Context, userID string) (roles, permissions []string, err error)
 	HasPermission(ctx context.Context, userID, permission string) (bool, error)
@@ -21,6 +21,10 @@ type Service interface {
 type API struct {
 	CreateRole          *commands.CreateRole
 	CreatePermission    *commands.CreatePermission
+	UpdateRole          *commands.UpdateRole
+	DeleteRole          *commands.DeleteRole
+	UpdatePermission    *commands.UpdatePermission
+	DeletePermission    *commands.DeletePermission
 	AssignRole          *commands.AssignRole
 	RevokeRole          *commands.RevokeRole
 	GrantPermission     *commands.GrantPermission
@@ -28,6 +32,7 @@ type API struct {
 	SyncRolePermissions *commands.SyncRolePermissions
 	Bootstrap           *commands.Bootstrap
 	GetUser             *queries.GetUser
+	GetRole             *queries.GetRole
 	ListRoles           *queries.ListRoles
 	ListPermissions     *queries.ListPermissions
 }

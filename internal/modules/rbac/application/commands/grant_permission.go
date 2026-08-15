@@ -8,10 +8,10 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// GrantPermissionCommand grants a permission (by name) directly to a user.
+// GrantPermissionCommand grants a permission (by code) directly to a user.
 type GrantPermissionCommand struct {
 	UserID     string
-	Permission string
+	Permission string // permission code
 }
 
 // GrantPermission grants a direct user permission.
@@ -30,11 +30,11 @@ func NewGrantPermission(permissions domain.PermissionRepository, access domain.U
 // Execute runs the use case.
 func (uc *GrantPermission) Execute(ctx context.Context, cmd GrantPermissionCommand) error {
 	userID := strings.TrimSpace(cmd.UserID)
-	name := strings.TrimSpace(cmd.Permission)
-	if userID == "" || name == "" {
+	code := strings.TrimSpace(cmd.Permission)
+	if userID == "" || code == "" {
 		return domain.ErrInvalid
 	}
-	perm, err := uc.permissions.FindByName(ctx, name)
+	perm, err := uc.permissions.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (uc *GrantPermission) Execute(ctx context.Context, cmd GrantPermissionComma
 			SubjectType: "user_permissions",
 			SubjectID:   userID,
 			Action:      audit.ActionCreated,
-			NewValues:   map[string]any{"permission_id": perm.ID, "permission": perm.Name},
+			NewValues:   map[string]any{"permission_id": perm.ID, "permission": perm.Code},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

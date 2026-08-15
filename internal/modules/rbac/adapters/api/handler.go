@@ -13,6 +13,7 @@ type handler struct {
 }
 
 type createRoleRequest struct {
+	Code string `json:"code"`
 	Name string `json:"name"`
 }
 
@@ -22,7 +23,7 @@ func (h *handler) createRole(w http.ResponseWriter, r *http.Request) {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
-	if err := h.deps.CreateRole.Execute(r.Context(), commands.CreateRoleCommand{Name: req.Name}); err != nil {
+	if err := h.deps.CreateRole.Execute(r.Context(), commands.CreateRoleCommand{Code: req.Code, Name: req.Name}); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -38,8 +39,47 @@ func (h *handler) listRoles(w http.ResponseWriter, r *http.Request) {
 	platformhttp.WriteSuccess(w, http.StatusOK, toRoleResponses(roles))
 }
 
-type createPermissionRequest struct {
+func (h *handler) getRole(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	res, err := h.deps.GetRole.Execute(r.Context(), code)
+	if err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	platformhttp.WriteSuccess(w, http.StatusOK, toRoleResponse(*res))
+}
+
+type updateRoleRequest struct {
 	Name string `json:"name"`
+}
+
+func (h *handler) updateRole(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	var req updateRoleRequest
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	if err := h.deps.UpdateRole.Execute(r.Context(), commands.UpdateRoleCommand{Code: code, NewName: req.Name}); err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	platformhttp.WriteSuccessMessage(w, http.StatusOK, "role updated")
+}
+
+func (h *handler) deleteRole(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	if err := h.deps.DeleteRole.Execute(r.Context(), commands.DeleteRoleCommand{Code: code}); err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	platformhttp.WriteSuccessMessage(w, http.StatusOK, "role deleted")
+}
+
+type createPermissionRequest struct {
+	Code  string `json:"code"`
+	Group string `json:"group"`
+	Name  string `json:"name"`
 }
 
 func (h *handler) createPermission(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +88,7 @@ func (h *handler) createPermission(w http.ResponseWriter, r *http.Request) {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
-	if err := h.deps.CreatePermission.Execute(r.Context(), commands.CreatePermissionCommand{Name: req.Name}); err != nil {
+	if err := h.deps.CreatePermission.Execute(r.Context(), commands.CreatePermissionCommand{Code: req.Code, Group: req.Group, Name: req.Name}); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
@@ -64,19 +104,47 @@ func (h *handler) listPermissions(w http.ResponseWriter, r *http.Request) {
 	platformhttp.WriteSuccess(w, http.StatusOK, toPermissionResponses(perms))
 }
 
+type updatePermissionRequest struct {
+	Group string `json:"group"`
+	Name  string `json:"name"`
+}
+
+func (h *handler) updatePermission(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	var req updatePermissionRequest
+	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	if err := h.deps.UpdatePermission.Execute(r.Context(), commands.UpdatePermissionCommand{Code: code, NewGroup: req.Group, NewName: req.Name}); err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	platformhttp.WriteSuccessMessage(w, http.StatusOK, "permission updated")
+}
+
+func (h *handler) deletePermission(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	if err := h.deps.DeletePermission.Execute(r.Context(), commands.DeletePermissionCommand{Code: code}); err != nil {
+		platformhttp.WriteMappedError(w, err)
+		return
+	}
+	platformhttp.WriteSuccessMessage(w, http.StatusOK, "permission deleted")
+}
+
 type syncRolePermissionsRequest struct {
 	Permissions []string `json:"permissions"`
 }
 
 func (h *handler) syncRolePermissions(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	code := chi.URLParam(r, "code")
 	var req syncRolePermissionsRequest
 	if err := platformhttp.DecodeJSON(w, r, &req); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return
 	}
 	if err := h.deps.SyncRolePermissions.Execute(r.Context(), commands.SyncRolePermissionsCommand{
-		Role: name, Permissions: req.Permissions,
+		Role: code, Permissions: req.Permissions,
 	}); err != nil {
 		platformhttp.WriteMappedError(w, err)
 		return

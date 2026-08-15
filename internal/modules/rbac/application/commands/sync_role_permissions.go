@@ -9,10 +9,11 @@ import (
 )
 
 // SyncRolePermissionsCommand replaces the permission set of a role. Missing
-// permissions are created on the fly, mirroring Spatie's syncPermissions.
+// permissions are created on the fly (their display name and group default to
+// the code and its prefix), mirroring Spatie's syncPermissions.
 type SyncRolePermissionsCommand struct {
-	Role        string
-	Permissions []string
+	Role        string   // role code
+	Permissions []string // permission codes
 }
 
 // SyncRolePermissions replaces a role's permissions.
@@ -30,7 +31,7 @@ func NewSyncRolePermissions(roles domain.RoleRepository, permissions domain.Perm
 
 // Execute runs the use case.
 func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissionsCommand) error {
-	role, err := uc.roles.FindByName(ctx, strings.TrimSpace(cmd.Role))
+	role, err := uc.roles.FindByCode(ctx, strings.TrimSpace(cmd.Role))
 	if err != nil {
 		return err
 	}
@@ -38,23 +39,23 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 		return domain.ErrNotFound
 	}
 
-	oldNames, err := uc.roles.PermissionsFor(ctx, role.ID)
+	oldCodes, err := uc.roles.PermissionsFor(ctx, role.ID)
 	if err != nil {
 		return err
 	}
 	var ids []string
-	var newNames []string
+	var newCodes []string
 	for _, raw := range cmd.Permissions {
-		name := strings.TrimSpace(raw)
-		if name == "" {
+		code := strings.TrimSpace(raw)
+		if code == "" {
 			continue
 		}
-		perm, err := uc.permissions.FindByName(ctx, name)
+		perm, err := uc.permissions.FindByCode(ctx, code)
 		if err != nil {
 			return err
 		}
 		if perm == nil {
-			perm, err = domain.NewPermission(name)
+			perm, err = domain.NewPermission(code, groupFor(code), code)
 			if err != nil {
 				return err
 			}
@@ -63,7 +64,7 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 			}
 		}
 		ids = append(ids, perm.ID)
-		newNames = append(newNames, perm.Name)
+		newCodes = append(newCodes, perm.Code)
 	}
 	if err := uc.roles.SetPermissions(ctx, role.ID, ids); err != nil {
 		return err
@@ -74,10 +75,19 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 			SubjectType: "role_permissions",
 			SubjectID:   role.ID,
 			Action:      audit.ActionUpdated,
-			OldValues:   map[string]any{"role": role.Name, "permissions": oldNames},
-			NewValues:   map[string]any{"role": role.Name, "permissions": newNames},
+			OldValues:   map[string]any{"role": role.Code, "permissions": oldCodes},
+			NewValues:   map[string]any{"role": role.Code, "permissions": newCodes},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}
 	return nil
+}
+
+// groupFor derives a display group from a permission code prefix, falling back
+// to "General" for codes without a dot.
+func groupFor(code string) string {
+	if i := strings.IndexByte(code, '.'); i > 0 {
+		return code[:i]
+	}
+	return "General"
 }

@@ -6,7 +6,8 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// ListRoles returns all roles ordered by creation time.
+// ListRoles returns all roles with their permission codes, ordered by creation
+// time.
 type ListRoles struct {
 	roles domain.RoleRepository
 }
@@ -17,8 +18,20 @@ func NewListRoles(roles domain.RoleRepository) *ListRoles {
 }
 
 // Execute runs the use case.
-func (q *ListRoles) Execute(ctx context.Context) ([]*domain.Role, error) {
-	return q.roles.List(ctx)
+func (q *ListRoles) Execute(ctx context.Context) ([]RoleDetail, error) {
+	roles, err := q.roles.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RoleDetail, 0, len(roles))
+	for _, r := range roles {
+		perms, err := q.roles.PermissionsFor(ctx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, RoleDetail{ID: r.ID, Code: r.Code, Name: r.Name, Permissions: perms})
+	}
+	return out, nil
 }
 
 // ListPermissions returns all permissions ordered by name.

@@ -8,10 +8,10 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// RevokeRoleCommand removes a role (by name) from a user.
+// RevokeRoleCommand removes a role (by code) from a user.
 type RevokeRoleCommand struct {
 	UserID string
-	Role   string
+	Role   string // role code
 }
 
 // RevokeRole removes a role from a user.
@@ -30,11 +30,11 @@ func NewRevokeRole(roles domain.RoleRepository, access domain.UserAccessReposito
 // Execute runs the use case.
 func (uc *RevokeRole) Execute(ctx context.Context, cmd RevokeRoleCommand) error {
 	userID := strings.TrimSpace(cmd.UserID)
-	roleName := strings.TrimSpace(cmd.Role)
-	if userID == "" || roleName == "" {
+	roleCode := strings.TrimSpace(cmd.Role)
+	if userID == "" || roleCode == "" {
 		return domain.ErrInvalid
 	}
-	role, err := uc.roles.FindByName(ctx, roleName)
+	role, err := uc.roles.FindByCode(ctx, roleCode)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (uc *RevokeRole) Execute(ctx context.Context, cmd RevokeRoleCommand) error 
 			SubjectType: "user_roles",
 			SubjectID:   userID,
 			Action:      audit.ActionDeleted,
-			OldValues:   map[string]any{"role_id": role.ID, "role": role.Name},
+			OldValues:   map[string]any{"role_id": role.ID, "role": role.Code},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

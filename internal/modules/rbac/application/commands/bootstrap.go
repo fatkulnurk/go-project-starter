@@ -8,10 +8,23 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
+// BootstrapRole is a well-known role to ensure on startup.
+type BootstrapRole struct {
+	Code string
+	Name string
+}
+
+// BootstrapPermission is a well-known permission to ensure on startup.
+type BootstrapPermission struct {
+	Code  string
+	Group string
+	Name  string
+}
+
 // BootstrapOptions lists the roles and permissions to ensure on startup.
 type BootstrapOptions struct {
-	DefaultRoles       []string
-	DefaultPermissions []string
+	DefaultRoles       []BootstrapRole
+	DefaultPermissions []BootstrapPermission
 }
 
 // Bootstrap seeds the well-known roles and permissions so admin APIs can rely
@@ -30,13 +43,13 @@ func NewBootstrap(roles domain.RoleRepository, permissions domain.PermissionRepo
 
 // Execute runs the use case.
 func (uc *Bootstrap) Execute(ctx context.Context, opts BootstrapOptions) error {
-	for _, name := range opts.DefaultPermissions {
-		if err := uc.ensurePermission(ctx, strings.TrimSpace(name)); err != nil {
+	for _, p := range opts.DefaultPermissions {
+		if err := uc.ensurePermission(ctx, strings.TrimSpace(p.Code), strings.TrimSpace(p.Group), strings.TrimSpace(p.Name)); err != nil {
 			return err
 		}
 	}
-	for _, name := range opts.DefaultRoles {
-		if err := uc.ensureRole(ctx, strings.TrimSpace(name)); err != nil {
+	for _, r := range opts.DefaultRoles {
+		if err := uc.ensureRole(ctx, strings.TrimSpace(r.Code), strings.TrimSpace(r.Name)); err != nil {
 			return err
 		}
 	}
@@ -44,18 +57,18 @@ func (uc *Bootstrap) Execute(ctx context.Context, opts BootstrapOptions) error {
 	return nil
 }
 
-func (uc *Bootstrap) ensurePermission(ctx context.Context, name string) error {
-	if name == "" {
+func (uc *Bootstrap) ensurePermission(ctx context.Context, code, group, name string) error {
+	if code == "" {
 		return nil
 	}
-	existing, err := uc.permissions.FindByName(ctx, name)
+	existing, err := uc.permissions.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return nil
 	}
-	perm, err := domain.NewPermission(name)
+	perm, err := domain.NewPermission(code, group, name)
 	if err != nil {
 		return err
 	}
@@ -67,25 +80,25 @@ func (uc *Bootstrap) ensurePermission(ctx context.Context, name string) error {
 			SubjectType: "permissions",
 			SubjectID:   perm.ID,
 			Action:      audit.ActionCreated,
-			NewValues:   map[string]any{"name": perm.Name},
+			NewValues:   map[string]any{"code": perm.Code, "group": perm.Group, "name": perm.Name},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}
 	return nil
 }
 
-func (uc *Bootstrap) ensureRole(ctx context.Context, name string) error {
-	if name == "" {
+func (uc *Bootstrap) ensureRole(ctx context.Context, code, name string) error {
+	if code == "" {
 		return nil
 	}
-	existing, err := uc.roles.FindByName(ctx, name)
+	existing, err := uc.roles.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return nil
 	}
-	role, err := domain.NewRole(name)
+	role, err := domain.NewRole(code, name)
 	if err != nil {
 		return err
 	}
@@ -97,7 +110,7 @@ func (uc *Bootstrap) ensureRole(ctx context.Context, name string) error {
 			SubjectType: "roles",
 			SubjectID:   role.ID,
 			Action:      audit.ActionCreated,
-			NewValues:   map[string]any{"name": role.Name},
+			NewValues:   map[string]any{"code": role.Code, "name": role.Name},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

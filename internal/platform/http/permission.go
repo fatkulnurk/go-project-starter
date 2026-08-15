@@ -18,7 +18,7 @@ func RequirePermission(authz authorization.Authorizer, action string) func(http.
 				WriteError(w, http.StatusUnauthorized, "unauthenticated", "unauthenticated")
 				return
 			}
-			if err := authz.Can(r.Context(), authorization.Identity{UserID: id.UserID, Roles: id.Roles}, action, nil); err != nil {
+			if err := authz.HasPermission(r.Context(), authorization.Identity{UserID: id.UserID, Roles: id.Roles}, action); err != nil {
 				WriteMappedError(w, err)
 				return
 			}

@@ -62,7 +62,7 @@ func (q *GetUser) load(ctx context.Context, userID string) (*RolesPermissions, e
 	if err != nil {
 		return nil, err
 	}
-	inherited, err := q.access.RolePermissionNames(ctx, userID)
+	inherited, err := q.access.RolePermissionCodes(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

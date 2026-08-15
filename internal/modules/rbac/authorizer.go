@@ -13,13 +13,13 @@ type Authorizer struct {
 	svc Service
 }
 
-// Can implements authorization.Authorizer. An empty action allows everything
-// (there is nothing to check).
-func (a *Authorizer) Can(ctx context.Context, identity authorization.Identity, action string, _ any) error {
-	if action == "" {
+// HasPermission implements authorization.Authorizer. An empty permission allows
+// everything (there is nothing to check).
+func (a *Authorizer) HasPermission(ctx context.Context, identity authorization.Identity, permission string) error {
+	if permission == "" {
 		return nil
 	}
-	ok, err := a.svc.HasPermission(ctx, identity.UserID, action)
+	ok, err := a.svc.HasPermission(ctx, identity.UserID, permission)
 	if err != nil {
 		return err
 	}

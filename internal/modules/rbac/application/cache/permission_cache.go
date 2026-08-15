@@ -34,11 +34,11 @@ func (pc *PermissionCache) Bump(ctx context.Context) error {
 	return err
 }
 
-// CurrentVersion returns the current version (1 when never bumped).
+// CurrentVersion returns the current version (0 when never bumped).
 func (pc *PermissionCache) CurrentVersion(ctx context.Context) (int64, error) {
 	b, err := pc.c.Get(ctx, versionKey)
 	if err == appcache.ErrNotFound {
-		return 1, nil
+		return 0, nil
 	}
 	if err != nil {
 		return 0, err

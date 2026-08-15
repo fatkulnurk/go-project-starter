@@ -8,10 +8,10 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// AssignRoleCommand assigns a role (by name) to a user.
+// AssignRoleCommand assigns a role (by code) to a user.
 type AssignRoleCommand struct {
 	UserID string
-	Role   string
+	Role   string // role code
 }
 
 // AssignRole grants a role to a user.
@@ -30,11 +30,11 @@ func NewAssignRole(roles domain.RoleRepository, access domain.UserAccessReposito
 // Execute runs the use case.
 func (uc *AssignRole) Execute(ctx context.Context, cmd AssignRoleCommand) error {
 	userID := strings.TrimSpace(cmd.UserID)
-	roleName := strings.TrimSpace(cmd.Role)
-	if userID == "" || roleName == "" {
+	roleCode := strings.TrimSpace(cmd.Role)
+	if userID == "" || roleCode == "" {
 		return domain.ErrInvalid
 	}
-	role, err := uc.roles.FindByName(ctx, roleName)
+	role, err := uc.roles.FindByCode(ctx, roleCode)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (uc *AssignRole) Execute(ctx context.Context, cmd AssignRoleCommand) error 
 			SubjectType: "user_roles",
 			SubjectID:   userID,
 			Action:      audit.ActionCreated,
-			NewValues:   map[string]any{"role_id": role.ID, "role": role.Name},
+			NewValues:   map[string]any{"role_id": role.ID, "role": role.Code},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

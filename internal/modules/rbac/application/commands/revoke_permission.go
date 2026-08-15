@@ -8,10 +8,10 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// RevokePermissionCommand revokes a direct user permission (by name).
+// RevokePermissionCommand revokes a direct user permission (by code).
 type RevokePermissionCommand struct {
 	UserID     string
-	Permission string
+	Permission string // permission code
 }
 
 // RevokePermission revokes a direct user permission.
@@ -30,11 +30,11 @@ func NewRevokePermission(permissions domain.PermissionRepository, access domain.
 // Execute runs the use case.
 func (uc *RevokePermission) Execute(ctx context.Context, cmd RevokePermissionCommand) error {
 	userID := strings.TrimSpace(cmd.UserID)
-	name := strings.TrimSpace(cmd.Permission)
-	if userID == "" || name == "" {
+	code := strings.TrimSpace(cmd.Permission)
+	if userID == "" || code == "" {
 		return domain.ErrInvalid
 	}
-	perm, err := uc.permissions.FindByName(ctx, name)
+	perm, err := uc.permissions.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (uc *RevokePermission) Execute(ctx context.Context, cmd RevokePermissionCom
 			SubjectType: "user_permissions",
 			SubjectID:   userID,
 			Action:      audit.ActionDeleted,
-			OldValues:   map[string]any{"permission_id": perm.ID, "permission": perm.Name},
+			OldValues:   map[string]any{"permission_id": perm.ID, "permission": perm.Code},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

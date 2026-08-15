@@ -149,7 +149,6 @@ func (m *Module) RegisterAPI(r chi.Router) {
 		Profile:               m.API.Profile,
 		FindUserByEmail:       m.API.FindUserByEmail,
 		Authenticator:         m.authn,
-		Authorizer:            authorization.AllowAll{},
 		Cache:                 m.cache,
 		PublicRateLimitMax:    m.settings.PublicRateLimitMax,
 		PublicRateLimitWindow: m.settings.PublicRateLimitWindow,

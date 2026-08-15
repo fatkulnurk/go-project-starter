@@ -8,8 +8,9 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 )
 
-// CreateRoleCommand creates a named role.
+// CreateRoleCommand creates a role from a stable code and a display name.
 type CreateRoleCommand struct {
+	Code string
 	Name string
 }
 
@@ -26,18 +27,19 @@ func NewCreateRole(roles domain.RoleRepository, auditor audit.Auditor) *CreateRo
 
 // Execute runs the use case.
 func (uc *CreateRole) Execute(ctx context.Context, cmd CreateRoleCommand) error {
+	code := strings.TrimSpace(cmd.Code)
 	name := strings.TrimSpace(cmd.Name)
-	if name == "" {
+	if code == "" || name == "" {
 		return domain.ErrInvalid
 	}
-	existing, err := uc.roles.FindByName(ctx, name)
+	existing, err := uc.roles.FindByCode(ctx, code)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return domain.ErrConflict
 	}
-	role, err := domain.NewRole(name)
+	role, err := domain.NewRole(code, name)
 	if err != nil {
 		return err
 	}
@@ -49,7 +51,7 @@ func (uc *CreateRole) Execute(ctx context.Context, cmd CreateRoleCommand) error 
 			SubjectType: "roles",
 			SubjectID:   role.ID,
 			Action:      audit.ActionCreated,
-			NewValues:   map[string]any{"name": role.Name},
+			NewValues:   map[string]any{"code": role.Code, "name": role.Name},
 			Actor:       audit.ActorFrom(ctx),
 		})
 	}

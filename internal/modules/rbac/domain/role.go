@@ -3,45 +3,58 @@
 package domain
 
 import (
-	"errors"
+	"strings"
 
+	"github.com/fatkulnurk/go-project-starter/internal/application/apierr"
 	"github.com/fatkulnurk/go-project-starter/internal/application/id"
 )
 
-// Errors returned by RBAC use cases.
+// Errors returned by RBAC use cases. They carry their HTTP kind so the API
+// layer renders the correct status code.
 var (
-	ErrNotFound = errors.New("not found")
-	ErrConflict = errors.New("conflict")
-	ErrInvalid  = errors.New("invalid")
+	ErrNotFound  = apierr.New(apierr.KindNotFound, "not found")
+	ErrConflict  = apierr.New(apierr.KindConflict, "conflict")
+	ErrInvalid   = apierr.New(apierr.KindInvalid, "invalid")
+	ErrProtected = apierr.New(apierr.KindForbidden, "protected role or permission")
 )
 
-// Role is a named set of permissions assigned to users.
+// Role is a named set of permissions assigned to users. Code is the stable
+// machine identifier checked by authorization; Name is the display label.
 type Role struct {
 	ID        string
+	Code      string
 	Name      string
 	CreatedAt int64
 }
 
-// NewRole builds a role from its name.
-func NewRole(name string) (*Role, error) {
-	if name == "" {
+// NewRole builds a role from its stable code and display name.
+func NewRole(code, name string) (*Role, error) {
+	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
 		return nil, ErrInvalid
 	}
-	return &Role{ID: newID(), Name: name}, nil
+	return &Role{ID: newID(), Code: code, Name: name}, nil
 }
 
 // Permission is a single capability that can be granted to users or roles.
+// Code is the stable identifier checked by authorization; Group and Name are
+// display metadata.
 type Permission struct {
-	ID   string
-	Name string
+	ID    string
+	Code  string
+	Group string
+	Name  string
 }
 
-// NewPermission builds a permission from its name.
-func NewPermission(name string) (*Permission, error) {
-	if name == "" {
+// NewPermission builds a permission from its stable code, display group and
+// display name.
+func NewPermission(code, group, name string) (*Permission, error) {
+	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
 		return nil, ErrInvalid
 	}
-	return &Permission{ID: newID(), Name: name}, nil
+	if strings.TrimSpace(group) == "" {
+		group = "General"
+	}
+	return &Permission{ID: newID(), Code: code, Group: group, Name: name}, nil
 }
 
 func newID() string { return id.New() }

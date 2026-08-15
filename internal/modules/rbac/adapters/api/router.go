@@ -16,12 +16,17 @@ import (
 type Deps struct {
 	CreateRole          *commands.CreateRole
 	CreatePermission    *commands.CreatePermission
+	UpdateRole          *commands.UpdateRole
+	DeleteRole          *commands.DeleteRole
+	UpdatePermission    *commands.UpdatePermission
+	DeletePermission    *commands.DeletePermission
 	AssignRole          *commands.AssignRole
 	RevokeRole          *commands.RevokeRole
 	GrantPermission     *commands.GrantPermission
 	RevokePermission    *commands.RevokePermission
 	SyncRolePermissions *commands.SyncRolePermissions
 	GetUser             *queries.GetUser
+	GetRole             *queries.GetRole
 	ListRoles           *queries.ListRoles
 	ListPermissions     *queries.ListPermissions
 	Authenticator       appauth.Authenticator
@@ -43,9 +48,14 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 			guard(r)
 			r.Get("/roles", h.listRoles)
 			r.Post("/roles", h.createRole)
+			r.Get("/roles/{code}", h.getRole)
+			r.Put("/roles/{code}", h.updateRole)
+			r.Delete("/roles/{code}", h.deleteRole)
+			r.Put("/roles/{code}/permissions", h.syncRolePermissions)
 			r.Get("/permissions", h.listPermissions)
 			r.Post("/permissions", h.createPermission)
-			r.Put("/roles/{name}/permissions", h.syncRolePermissions)
+			r.Put("/permissions/{code}", h.updatePermission)
+			r.Delete("/permissions/{code}", h.deletePermission)
 			r.Get("/users/{userID}", h.getUser)
 			r.Post("/users/{userID}/roles", h.assignRole)
 			r.Delete("/users/{userID}/roles", h.revokeRole)

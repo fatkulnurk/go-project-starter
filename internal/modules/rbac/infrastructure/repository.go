@@ -61,19 +61,19 @@ func NewRoleRepository(db *sql.DB, driver string) *RoleRepository {
 
 // Save implements domain.RoleRepository.
 func (r *RoleRepository) Save(ctx context.Context, role *domain.Role) error {
-	_, err := r.db.ExecContext(ctx, r.q(`INSERT INTO roles (id, name) VALUES (?, ?)`), role.ID, role.Name)
+	_, err := r.db.ExecContext(ctx, r.q(`INSERT INTO roles (id, code, name) VALUES (?, ?, ?)`), role.ID, role.Code, role.Name)
 	return err
 }
 
-// FindByName implements domain.RoleRepository.
-func (r *RoleRepository) FindByName(ctx context.Context, name string) (*domain.Role, error) {
-	row := r.db.QueryRowContext(ctx, r.q(`SELECT id, name FROM roles WHERE name = ?`), name)
+// FindByCode implements domain.RoleRepository.
+func (r *RoleRepository) FindByCode(ctx context.Context, code string) (*domain.Role, error) {
+	row := r.db.QueryRowContext(ctx, r.q(`SELECT id, code, name FROM roles WHERE code = ?`), code)
 	return scanRole(row)
 }
 
 // List implements domain.RoleRepository.
 func (r *RoleRepository) List(ctx context.Context) ([]*domain.Role, error) {
-	rows, err := r.db.QueryContext(ctx, r.q(`SELECT id, name FROM roles ORDER BY created_at ASC`))
+	rows, err := r.db.QueryContext(ctx, r.q(`SELECT id, code, name FROM roles ORDER BY created_at ASC`))
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (r *RoleRepository) List(ctx context.Context) ([]*domain.Role, error) {
 	var out []*domain.Role
 	for rows.Next() {
 		var role domain.Role
-		if err := rows.Scan(&role.ID, &role.Name); err != nil {
+		if err := rows.Scan(&role.ID, &role.Code, &role.Name); err != nil {
 			return nil, err
 		}
 		out = append(out, &role)
@@ -93,6 +93,12 @@ func (r *RoleRepository) List(ctx context.Context) ([]*domain.Role, error) {
 // CASCADE.
 func (r *RoleRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, r.q(`DELETE FROM roles WHERE id = ?`), id)
+	return err
+}
+
+// UpdateName implements domain.RoleRepository.
+func (r *RoleRepository) UpdateName(ctx context.Context, id, name string) error {
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE roles SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`), name, id)
 	return err
 }
 
@@ -115,19 +121,19 @@ func (r *RoleRepository) SetPermissions(ctx context.Context, roleID string, perm
 	return tx.Commit()
 }
 
-// PermissionsFor implements domain.RoleRepository.
+// PermissionsFor implements domain.RoleRepository. It returns permission codes.
 func (r *RoleRepository) PermissionsFor(ctx context.Context, roleID string) ([]string, error) {
 	return r.scanStrings(ctx, `
-		SELECT p.name
+		SELECT p.code
 		FROM permissions p
 		JOIN role_permissions rp ON rp.permission_id = p.id
 		WHERE rp.role_id = ?
-		ORDER BY p.name`, roleID)
+		ORDER BY p.code`, roleID)
 }
 
 func scanRole(row *sql.Row) (*domain.Role, error) {
 	var role domain.Role
-	err := row.Scan(&role.ID, &role.Name)
+	err := row.Scan(&role.ID, &role.Code, &role.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -151,15 +157,15 @@ func NewPermissionRepository(db *sql.DB, driver string) *PermissionRepository {
 
 // Save implements domain.PermissionRepository.
 func (r *PermissionRepository) Save(ctx context.Context, p *domain.Permission) error {
-	_, err := r.db.ExecContext(ctx, r.q(`INSERT INTO permissions (id, name) VALUES (?, ?)`), p.ID, p.Name)
+	_, err := r.db.ExecContext(ctx, r.q(`INSERT INTO permissions (id, code, group_name, name) VALUES (?, ?, ?, ?)`), p.ID, p.Code, p.Group, p.Name)
 	return err
 }
 
-// FindByName implements domain.PermissionRepository.
-func (r *PermissionRepository) FindByName(ctx context.Context, name string) (*domain.Permission, error) {
-	row := r.db.QueryRowContext(ctx, r.q(`SELECT id, name FROM permissions WHERE name = ?`), name)
+// FindByCode implements domain.PermissionRepository.
+func (r *PermissionRepository) FindByCode(ctx context.Context, code string) (*domain.Permission, error) {
+	row := r.db.QueryRowContext(ctx, r.q(`SELECT id, code, group_name, name FROM permissions WHERE code = ?`), code)
 	var p domain.Permission
-	err := row.Scan(&p.ID, &p.Name)
+	err := row.Scan(&p.ID, &p.Code, &p.Group, &p.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -169,9 +175,10 @@ func (r *PermissionRepository) FindByName(ctx context.Context, name string) (*do
 	return &p, nil
 }
 
-// List implements domain.PermissionRepository.
+// List implements domain.PermissionRepository. Results are ordered by group
+// then code so grouped UI rendering needs no extra sorting.
 func (r *PermissionRepository) List(ctx context.Context) ([]*domain.Permission, error) {
-	rows, err := r.db.QueryContext(ctx, r.q(`SELECT id, name FROM permissions ORDER BY name ASC`))
+	rows, err := r.db.QueryContext(ctx, r.q(`SELECT id, code, group_name, name FROM permissions ORDER BY group_name ASC, code ASC`))
 	if err != nil {
 		return nil, err
 	}
@@ -179,12 +186,26 @@ func (r *PermissionRepository) List(ctx context.Context) ([]*domain.Permission, 
 	var out []*domain.Permission
 	for rows.Next() {
 		var p domain.Permission
-		if err := rows.Scan(&p.ID, &p.Name); err != nil {
+		if err := rows.Scan(&p.ID, &p.Code, &p.Group, &p.Name); err != nil {
 			return nil, err
 		}
 		out = append(out, &p)
 	}
 	return out, rows.Err()
+}
+
+// Delete implements domain.PermissionRepository. Links are removed by ON
+// DELETE CASCADE.
+func (r *PermissionRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, r.q(`DELETE FROM permissions WHERE id = ?`), id)
+	return err
+}
+
+// Update implements domain.PermissionRepository. It renames the display group
+// and label, keeping the code and its links.
+func (r *PermissionRepository) Update(ctx context.Context, id, group, name string) error {
+	_, err := r.db.ExecContext(ctx, r.q(`UPDATE permissions SET group_name = ?, name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`), group, name, id)
+	return err
 }
 
 // ---------------------------------------------------------------------------
@@ -223,33 +244,35 @@ func (r *UserAccessRepository) RevokePermission(ctx context.Context, userID, per
 	return err
 }
 
-// Roles implements domain.UserAccessRepository.
+// Roles implements domain.UserAccessRepository. It returns role codes.
 func (r *UserAccessRepository) Roles(ctx context.Context, userID string) ([]string, error) {
 	return r.scanStrings(ctx, `
-		SELECT r.name
+		SELECT r.code
 		FROM roles r
 		JOIN user_roles ur ON ur.role_id = r.id
 		WHERE ur.user_id = ?
-		ORDER BY r.name`, userID)
+		ORDER BY r.code`, userID)
 }
 
-// DirectPermissions implements domain.UserAccessRepository.
+// DirectPermissions implements domain.UserAccessRepository. It returns
+// permission codes.
 func (r *UserAccessRepository) DirectPermissions(ctx context.Context, userID string) ([]string, error) {
 	return r.scanStrings(ctx, `
-		SELECT p.name
+		SELECT p.code
 		FROM permissions p
 		JOIN user_permissions up ON up.permission_id = p.id
 		WHERE up.user_id = ?
-		ORDER BY p.name`, userID)
+		ORDER BY p.code`, userID)
 }
 
-// RolePermissionNames implements domain.UserAccessRepository.
-func (r *UserAccessRepository) RolePermissionNames(ctx context.Context, userID string) ([]string, error) {
+// RolePermissionCodes implements domain.UserAccessRepository. It returns the
+// permission codes inherited through the user's roles.
+func (r *UserAccessRepository) RolePermissionCodes(ctx context.Context, userID string) ([]string, error) {
 	return r.scanStrings(ctx, `
-		SELECT DISTINCT p.name
+		SELECT DISTINCT p.code
 		FROM permissions p
 		JOIN role_permissions rp ON rp.permission_id = p.id
 		JOIN user_roles ur ON ur.role_id = rp.role_id
 		WHERE ur.user_id = ?
-		ORDER BY p.name`, userID)
+		ORDER BY p.code`, userID)
 }
