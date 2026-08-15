@@ -1,12 +1,9 @@
 package rbac
 
 import (
-	"context"
 	"database/sql"
-	"errors"
 	"time"
 
-	"github.com/fatkulnurk/go-project-starter/internal/application/apierr"
 	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	appauth "github.com/fatkulnurk/go-project-starter/internal/application/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
@@ -19,19 +16,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Default roles and permissions seeded on startup. Code is the stable
-// identifier; Name (and Group for permissions) are display labels shown in the
-// admin UI.
-var (
-	defaultRoles = []commands.BootstrapRole{
-		{Code: authorization.RoleSuperAdmin, Name: "Super Admin"},
-		{Code: authorization.RoleUser, Name: "User"},
-	}
-	defaultPermissions = []commands.BootstrapPermission{
-		{Code: authorization.PermissionManageRBAC, Group: "RBAC", Name: "Manage RBAC"},
-	}
-)
-
 // Dependencies are wired by the composition root.
 type Dependencies struct {
 	DB       *sql.DB
@@ -39,14 +23,6 @@ type Dependencies struct {
 	Cache    cache.Cache
 	CacheTTL time.Duration
 	Auditor  audit.Auditor
-}
-
-// BootstrapOptions drives startup seeding and super admin promotion.
-type BootstrapOptions struct {
-	SuperAdminEmail string
-	// FindUserID resolves an email to a user ID; used to promote the super
-	// admin. Provided by the composition root via the auth module.
-	FindUserID func(ctx context.Context, email string) (string, error)
 }
 
 // Module wires the RBAC use cases and their adapters.
@@ -78,7 +54,6 @@ func New(deps Dependencies) *Module {
 	grantPermission := commands.NewGrantPermission(permissions, access, pcache, deps.Auditor)
 	revokePermission := commands.NewRevokePermission(permissions, access, pcache, deps.Auditor)
 	syncRolePermissions := commands.NewSyncRolePermissions(roles, permissions, pcache, deps.Auditor)
-	bootstrap := commands.NewBootstrap(roles, permissions, pcache, deps.Auditor)
 	getUser := queries.NewGetUser(access, pcache)
 	getRole := queries.NewGetRole(roles)
 
@@ -97,7 +72,6 @@ func New(deps Dependencies) *Module {
 			GrantPermission:     grantPermission,
 			RevokePermission:    revokePermission,
 			SyncRolePermissions: syncRolePermissions,
-			Bootstrap:           bootstrap,
 			GetUser:             getUser,
 			GetRole:             getRole,
 			ListRoles:           queries.NewListRoles(roles),
@@ -114,29 +88,6 @@ func (m *Module) Service() Service { return m.svc }
 // Authorizer exposes the module's authorization implementation for protected
 // routes.
 func (m *Module) Authorizer() authorization.Authorizer { return m.authz }
-
-// Bootstrap seeds the well-known roles and permissions, then promotes the
-// configured super admin email (skipped silently when the user does not exist
-// yet).
-func (m *Module) Bootstrap(ctx context.Context, opts BootstrapOptions) error {
-	if err := m.API.Bootstrap.Execute(ctx, commands.BootstrapOptions{
-		DefaultRoles:       defaultRoles,
-		DefaultPermissions: defaultPermissions,
-	}); err != nil {
-		return err
-	}
-	if opts.SuperAdminEmail == "" || opts.FindUserID == nil {
-		return nil
-	}
-	userID, err := opts.FindUserID(ctx, opts.SuperAdminEmail)
-	if err != nil {
-		if errors.Is(err, apierr.ErrNotFound) {
-			return nil
-		}
-		return err
-	}
-	return m.svc.AssignRole(ctx, userID, authorization.RoleSuperAdmin)
-}
 
 // RegisterAPI mounts the module's admin API routes behind auth + rbac.manage.
 func (m *Module) RegisterAPI(r chi.Router, authn appauth.Authenticator, authz authorization.Authorizer) {

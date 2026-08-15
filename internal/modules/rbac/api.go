@@ -30,7 +30,6 @@ type API struct {
 	GrantPermission     *commands.GrantPermission
 	RevokePermission    *commands.RevokePermission
 	SyncRolePermissions *commands.SyncRolePermissions
-	Bootstrap           *commands.Bootstrap
 	GetUser             *queries.GetUser
 	GetRole             *queries.GetRole
 	ListRoles           *queries.ListRoles

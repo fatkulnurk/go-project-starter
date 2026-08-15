@@ -27,6 +27,8 @@ Each layer has a README describing what belongs there — see
 | `web`       | Public web server (`WEB_PORT`) — homepage landing page + `/assets/*` |
 | `worker`    | Queue worker — processes email/SMS tasks enqueued by the API         |
 | `migrate`   | Migration CLI — applies/reverts `migrations/` (`up`, `down`, `version`) |
+| `seed`      | One-off seeder (like `artisan db:seed`) — creates default roles/     |
+|             | permissions and demo users defined in the module seeder packages      |
 
 The API and worker share the same modules; email/SMS are enqueued by the API
 and delivered by the worker. The web binary serves the public homepage
@@ -97,6 +99,7 @@ literals live in constants (see `config`, `permission`, the DTO files).
 ```sh
 go mod tidy
 go run ./cmd/migrate up
+go run ./cmd/seed         # create default roles/permissions + demo users
 go run ./cmd/api
 go run ./cmd/worker   # separate terminal — processes email/SMS tasks
 go run ./cmd/web      # optional — public homepage on WEB_PORT
@@ -150,8 +153,9 @@ go run ./cmd/web      # optional — public homepage on WEB_PORT
 > it over HTTP, add a thin adapter in the composition root.
 
 To grant a user access to protected endpoints, use the RBAC API, e.g. assign
-the `super_admin` role, or set `RBAC_BOOTSTRAP_SUPER_ADMIN_EMAIL` before
-startup.
+the `super_admin` role. The seeders create a default admin account
+(`admin@example.com` / `password123`) and demo user (`user@example.com` /
+`password123`) — see `auth/seeder.DefaultUsers`.
 
 ## Verification
 
@@ -177,4 +181,4 @@ module code stays unchanged.
 - `MAIL_DRIVER=log|smtp|ses`
 - `SMS_DRIVER=log|twilio`
 - `QUEUE_DRIVER=asynq|db`
-- `RBAC_CACHE_TTL`, `RBAC_BOOTSTRAP_SUPER_ADMIN_EMAIL`
+- `RBAC_CACHE_TTL`

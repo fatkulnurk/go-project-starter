@@ -16,6 +16,9 @@ here — only dependency wiring.
 | `worker`    | Queue worker. Processes async tasks enqueued by the API (email/SMS       |
 |             | delivery, etc.).                                                         |
 | `migrate`   | Migration CLI. Applies/reverts the SQL migrations in `migrations/`.      |
+| `seed`      | One-off seeder (like `artisan db:seed`). Creates the default roles/      |
+|             | permissions and demo users defined in the module seeder packages         |
+|             | (e.g. `auth/seeder.DefaultUsers`, `rbac/seeder.DefaultRoles`).           |
 
 ## Running
 
@@ -31,6 +34,12 @@ go run ./cmd/worker
 
 # Migrations
 go run ./cmd/migrate up
+
+# Seeder (idempotent, safe to re-run) — run after migrations, before the API
+go run ./cmd/seed
+
+# Seed only one seeder (like artisan db:seed --class)
+go run ./cmd/seed auth.users
 ```
 
 All binaries read the same environment (see `.env.example`). Start with the

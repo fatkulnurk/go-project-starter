@@ -135,20 +135,6 @@ func run() error {
 		},
 	})
 
-	// Bootstrap default roles/permissions and assign the super admin.
-	if err := rbacModule.Bootstrap(context.Background(), rbac.BootstrapOptions{
-		SuperAdminEmail: cfg.RBAC.SuperAdminEmail,
-		FindUserID: func(ctx context.Context, email string) (string, error) {
-			user, err := authModule.API.FindUserByEmail.Execute(ctx, email)
-			if err != nil {
-				return "", err
-			}
-			return user.ID, nil
-		},
-	}); err != nil {
-		return err
-	}
-
 	// --- HTTP server ---------------------------------------------------------
 	authorizer := rbacModule.Authorizer()
 	platformhttp.SetTrustedProxies(cfg.TrustedProxies)

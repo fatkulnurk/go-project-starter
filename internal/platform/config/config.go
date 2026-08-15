@@ -116,8 +116,7 @@ const (
 	envRateLimitPublicMax       = "RATE_LIMIT_PUBLIC_MAX"
 	envRateLimitPublicWindow    = "RATE_LIMIT_PUBLIC_WINDOW"
 
-	envRBACCacheTTL       = "RBAC_CACHE_TTL"
-	envRBACSuperAdminMail = "RBAC_BOOTSTRAP_SUPER_ADMIN_EMAIL"
+	envRBACCacheTTL = "RBAC_CACHE_TTL"
 
 	envMediaMaxUploadSize = "MEDIA_MAX_UPLOAD_SIZE"
 
@@ -229,10 +228,9 @@ type MediaConfig struct {
 	MaxUploadSize int64
 }
 
-// RBACConfig holds role/permission bootstrap and caching settings.
+// RBACConfig holds role/permission caching settings.
 type RBACConfig struct {
 	PermissionCacheTTL time.Duration
-	SuperAdminEmail    string
 }
 
 // DatabaseConfig selects the SQL driver and connection. Pool sizes control
@@ -566,7 +564,6 @@ func Load() (Config, error) {
 		},
 		RBAC: RBACConfig{
 			PermissionCacheTTL: b.duration(envRBACCacheTTL, defaultRBACCacheTTL),
-			SuperAdminEmail:    b.str(envRBACSuperAdminMail, ""),
 		},
 		Media: MediaConfig{
 			MaxUploadSize: b.int64(envMediaMaxUploadSize, defaultMediaMaxUploadSize),
