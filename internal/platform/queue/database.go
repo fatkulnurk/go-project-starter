@@ -16,9 +16,18 @@ import (
 
 const (
 	defaultPollInterval = 1 * time.Second
-	defaultLease        = 60 * time.Second
-	backoffBase         = 5 * time.Second
-	backoffMax          = 5 * time.Minute
+	// defaultLease must be at least as long as jobTimeout: a job claimed by a
+	// worker is only reclaimable after the lease lapses, so a lease shorter
+	// than the maximum handler runtime lets a second worker claim and execute
+	// the same job concurrently (duplicate side effects). The cost is that a
+	// genuinely crashed worker's jobs wait up to the lease before recovery.
+	defaultLease = 6 * time.Minute
+	backoffBase  = 5 * time.Second
+	backoffMax   = 5 * time.Minute
+	// jobTimeout bounds a single handler execution so a hung downstream call
+	// cannot occupy a worker (and a graceful Stop) forever. On expiry the job
+	// is released and re-claimed by another worker after the lease.
+	jobTimeout = 5 * time.Minute
 )
 
 // DatabaseClient enqueues tasks into the queue_jobs table. It reuses the
@@ -29,11 +38,15 @@ type DatabaseClient struct {
 }
 
 // NewDatabaseClient builds a database-backed enqueuer.
+// It reuses the shared SQL pool (no ownership taken) and rebinds queries for
+// the given driver dialect.
 func NewDatabaseClient(db *sql.DB, driver string) *DatabaseClient {
 	return &DatabaseClient{db: db, driver: driver}
 }
 
 // Enqueue implements queue.Enqueuer.
+// It inserts a job with available_at set to now; MaxRetry 0 yields a single
+// attempt, otherwise the job is retried up to MaxRetry times.
 func (c *DatabaseClient) Enqueue(ctx context.Context, t queue.Task) error {
 	maxAttempts := 1
 	if t.MaxRetry > 0 {
@@ -46,7 +59,8 @@ func (c *DatabaseClient) Enqueue(ctx context.Context, t queue.Task) error {
 	return err
 }
 
-// Close implements the client cleanup contract; the pool is owned elsewhere.
+// Close implements the client cleanup contract; the pool is owned elsewhere,
+// so nothing is released and nil is always returned.
 func (c *DatabaseClient) Close() error { return nil }
 
 // DatabaseServer polls the queue_jobs table and processes jobs with a worker
@@ -60,26 +74,36 @@ type DatabaseServer struct {
 	log         *slog.Logger
 	handlers    map[string]queue.TaskHandler
 
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	mu   sync.RWMutex
 	stop chan struct{}
 	wg   sync.WaitGroup
 }
 
 // NewDatabaseServer builds a database-backed worker.
+// concurrency bounds the number of concurrent job workers (defaults to 10
+// when <= 0); log receives claim, retry and failure diagnostics.
 func NewDatabaseServer(db *sql.DB, driver string, concurrency int, log *slog.Logger) *DatabaseServer {
 	if concurrency <= 0 {
 		concurrency = 10
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &DatabaseServer{
 		db:          db,
 		driver:      driver,
 		concurrency: concurrency,
 		log:         log,
 		handlers:    make(map[string]queue.TaskHandler),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 }
 
 // Register implements queue.Registrar.
+// It binds a task type (stored in the queue column) to a handler; the last
+// registration wins for duplicate task types.
 func (s *DatabaseServer) Register(taskType string, h queue.TaskHandler) {
 	s.mu.Lock()
 	s.handlers[taskType] = h
@@ -87,6 +111,8 @@ func (s *DatabaseServer) Register(taskType string, h queue.TaskHandler) {
 }
 
 // Run blocks and processes jobs until Stop is called.
+// It starts one worker goroutine per concurrency slot and blocks until they
+// all stop; it always returns nil.
 func (s *DatabaseServer) Run() error {
 	s.stop = make(chan struct{})
 	for i := 0; i < s.concurrency; i++ {
@@ -97,12 +123,14 @@ func (s *DatabaseServer) Run() error {
 	return nil
 }
 
-// Stop gracefully stops the workers.
+// Stop gracefully stops the workers and cancels in-flight jobs.
+// Workers exit on their next poll after the stop signal is sent.
 func (s *DatabaseServer) Stop() {
 	if s.stop == nil {
 		return
 	}
 	close(s.stop)
+	s.cancel()
 }
 
 // worker claims and processes one job at a time until stopped.
@@ -112,13 +140,17 @@ func (s *DatabaseServer) worker() {
 		select {
 		case <-s.stop:
 			return
+		case <-s.ctx.Done():
+			return
 		default:
 		}
-		if s.processOne(context.Background()) {
+		if s.processOne(s.ctx) {
 			continue
 		}
 		select {
 		case <-s.stop:
+			return
+		case <-s.ctx.Done():
 			return
 		case <-time.After(defaultPollInterval):
 		}
@@ -157,14 +189,24 @@ func (s *DatabaseServer) processOne(ctx context.Context) bool {
 		return true
 	}
 
-	err = s.runHandler(h, ctx, job)
+	// Bound the handler execution so a hung job cannot occupy a worker (or a
+	// graceful Stop) forever; only the handler itself is time-boxed.
+	handlerCtx, cancel := context.WithTimeout(ctx, jobTimeout)
+	err = s.runHandler(h, handlerCtx, job)
+	cancel()
+	// Finalize the job on a context detached from the server cancellation:
+	// Stop() cancels s.ctx, and if finish/release ran on that same context the
+	// job would never be deleted or released, then be re-claimed and executed
+	// twice on the next worker start.
+	finalCtx, finalCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer finalCancel()
 	if err == nil {
-		s.finish(ctx, job.id)
+		s.finish(finalCtx, job.id)
 		return true
 	}
 	if errors.Is(err, queue.ErrPermanent) {
 		s.log.Warn("queue task skipped (permanent)", "task_type", job.queue, "err", err)
-		s.finish(ctx, job.id)
+		s.finish(finalCtx, job.id)
 		return true
 	}
 
@@ -174,10 +216,10 @@ func (s *DatabaseServer) processOne(ctx context.Context) bool {
 	attempt := job.attempts + 1
 	if attempt >= job.maxAttempts {
 		s.log.Error("queue task gave up after max attempts", "task_type", job.queue, "attempts", attempt, "err", err)
-		s.finish(ctx, job.id)
+		s.finish(finalCtx, job.id)
 		return true
 	}
-	s.release(ctx, job.id, attempt)
+	s.release(finalCtx, job.id, attempt)
 	s.log.Warn("queue task failed, scheduling retry", "task_type", job.queue, "attempts", attempt, "err", err)
 	return true
 }

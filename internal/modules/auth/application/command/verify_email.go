@@ -2,17 +2,18 @@ package command
 
 import (
 	"context"
-	"strings"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
 
-// VerifyEmailCommand verifies an email address with its OTP.
+// VerifyEmailCommand verifies an email address with its OTP. OldCode confirms
+// the previous address when a contact change is being applied.
 type VerifyEmailCommand struct {
-	Email string
-	Code  string
+	Email   string
+	Code    string
+	OldCode string
 }
 
 // VerifyEmail confirms an email. It applies a pending contact change when the
@@ -27,22 +28,26 @@ type VerifyEmail struct {
 	otpMaxAttempts int
 }
 
-// NewVerifyEmail builds the use case.
+// NewVerifyEmail builds the email-verification use case from the user, code
+// and pending-change repositories, the auditor, clock and attempt limit.
 func NewVerifyEmail(users domain.UserRepository, codes domain.VerificationCodeRepository, pending domain.PendingContactChangeRepository, auditor audit.Recorder, clk clock.Clock, otpMaxAttempts int) *VerifyEmail {
 	return &VerifyEmail{users: users, codes: codes, pending: pending, auditor: auditor, clock: clk, otpMaxAttempts: otpMaxAttempts}
 }
 
-// Execute runs the use case. It is idempotent for already-verified emails.
+// Execute verifies an email with its OTP, applying a pending contact change
+// when one exists. It is idempotent for already-verified addresses and returns
+// ErrInvalid for malformed input or wrong codes, never revealing whether the
+// email is registered.
 func (uc *VerifyEmail) Execute(ctx context.Context, cmd VerifyEmailCommand) error {
-	email := strings.ToLower(strings.TrimSpace(cmd.Email))
-	if email == "" || cmd.Code == "" {
+	email, err := domain.NormalizeEmail(cmd.Email)
+	if err != nil || cmd.Code == "" {
 		return domain.ErrInvalid
 	}
 
 	if pending, err := uc.pending.FindPendingByNewValue(ctx, domain.ChannelEmail, email); err != nil {
 		return err
 	} else if pending != nil {
-		return uc.applyPending(ctx, pending, email, cmd.Code)
+		return uc.applyPending(ctx, pending, email, cmd.Code, cmd.OldCode)
 	}
 
 	user, err := uc.users.FindByEmail(ctx, email)
@@ -76,14 +81,28 @@ func (uc *VerifyEmail) Execute(ctx context.Context, cmd VerifyEmailCommand) erro
 }
 
 // applyPending confirms the OTP for a pending contact change and applies the
-// new value to the user.
-func (uc *VerifyEmail) applyPending(ctx context.Context, pending *domain.PendingContactChange, email, code string) error {
+// new value to the user. When the account had a previous address, a second OTP
+// sent to it must also be confirmed so a stolen session cannot hijack the
+// account.
+func (uc *VerifyEmail) applyPending(ctx context.Context, pending *domain.PendingContactChange, email, code, oldCode string) error {
 	user, err := uc.users.FindByID(ctx, pending.UserID)
 	if err != nil {
 		return err
 	}
 	if user == nil {
 		return domain.ErrNotFound
+	}
+	// Validate the old-channel code first: consuming the new-value code before
+	// the old one checks out would burn the new code on a single typo, forcing
+	// the user to re-request codes entirely.
+	if pending.OldValue != "" {
+		old, err := uc.codes.FindLatestActive(ctx, user.ID, domain.PurposeVerifyOld, domain.ChannelEmail)
+		if err != nil {
+			return err
+		}
+		if err := validateCode(ctx, uc.codes, old, oldCode, uc.otpMaxAttempts); err != nil {
+			return err
+		}
 	}
 	vc, err := uc.codes.FindLatestActive(ctx, user.ID, domain.PurposeVerify, domain.ChannelEmail)
 	if err != nil {
@@ -115,7 +134,7 @@ func (uc *VerifyEmail) audit(ctx context.Context, subjectType, subjectID string,
 	if uc.auditor == nil {
 		return
 	}
-	_ = uc.auditor.Record(ctx, audit.Entry{
+	audit.RecordBestEffort(ctx, uc.auditor, audit.Entry{
 		SubjectType: subjectType,
 		SubjectID:   subjectID,
 		Action:      action,

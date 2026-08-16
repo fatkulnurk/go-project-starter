@@ -26,11 +26,13 @@ func New(environment string) *slog.Logger {
 type ctxKey struct{}
 
 // With stores the logger inside ctx.
+// From retrieves the same logger later; a nil logger is stored as-is.
 func With(ctx context.Context, l *slog.Logger) context.Context {
 	return context.WithValue(ctx, ctxKey{}, l)
 }
 
 // From returns the logger stored in ctx, or a fallback logger.
+// The fallback is slog.Default() when ctx carries no logger (or a nil one).
 func From(ctx context.Context) *slog.Logger {
 	if l, ok := ctx.Value(ctxKey{}).(*slog.Logger); ok {
 		return l

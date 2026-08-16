@@ -40,6 +40,8 @@ func ObjectKey(modelType, modelID, collection, name string) (string, error) {
 }
 
 // validateSegment rejects empty, dot-relative, and separator-carrying values.
+// It returns appmedia.ErrInvalid for any value that is empty, is "." or "..",
+// or contains '/', '\' or a NUL byte.
 func validateSegment(s string) error {
 	if s == "" {
 		return appmedia.ErrInvalid

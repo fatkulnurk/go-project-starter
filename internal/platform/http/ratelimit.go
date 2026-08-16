@@ -41,9 +41,11 @@ func incrementLimit(ctx context.Context, c cache.Cache, key string, max int64, w
 	if err != nil {
 		return err
 	}
-	if n == 1 {
-		_ = c.Expire(ctx, key, window)
-	}
+	// Re-apply the window on every increment (sliding window). Setting it only
+	// on the first request lets a concurrent DB-driver increment clobber the
+	// expiration back to "never", permanently locking the key; applying it each
+	// time keeps the TTL correct on every driver.
+	_ = c.Expire(ctx, key, window)
 	if n > max {
 		return apierr.ErrTooManyRequests
 	}

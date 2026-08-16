@@ -6,26 +6,32 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Channel identifies the delivery channel of a verification code.
+// Channel identifies the delivery channel of a verification code: email or
+// phone.
 type Channel string
 
-// Channels.
+// Channels a verification code can be delivered on. A code is scoped to
+// exactly one channel.
 const (
 	ChannelEmail Channel = "email"
 	ChannelPhone Channel = "phone"
 )
 
-// Purpose identifies what the code/token is used for.
+// Purpose identifies what a code or token is used for: verification, old-address
+// verification, password reset, or magic link login.
 type Purpose string
 
-// Purposes.
+// Purposes a verification code or magic link can be issued for. The purpose
+// drives the hashing and validation semantics.
 const (
 	PurposeVerify    Purpose = "verify"
+	PurposeVerifyOld Purpose = "verify_old"
 	PurposeReset     Purpose = "reset"
 	PurposeMagicLink Purpose = "magic_link"
 )
 
-// VerificationCode is a single-use, expiring, attempt-limited code or token.
+// VerificationCode is a single-use, expiring, attempt-limited code or token
+// used to verify a contact, reset a password, or log in via magic link.
 type VerificationCode struct {
 	ID         string
 	UserID     string
@@ -61,22 +67,26 @@ func NewVerificationCode(userID string, channel Channel, purpose Purpose, raw st
 	}, nil
 }
 
-// IsExpired reports whether the code is past its expiry.
+// IsExpired reports whether the code is past its expiry relative to now. The
+// reference time is converted to UTC before comparison.
 func (c *VerificationCode) IsExpired(now time.Time) bool {
 	return now.UTC().After(c.ExpiresAt)
 }
 
-// IsConsumed reports whether the code was already used.
+// IsConsumed reports whether the code was already used, i.e. ConsumedAt is
+// set.
 func (c *VerificationCode) IsConsumed() bool { return c.ConsumedAt != nil }
 
-// Consume marks the code as used at now.
+// Consume marks the code as used at now and stamps the record as updated.
+// Consumed codes are rejected by validation.
 func (c *VerificationCode) Consume(now time.Time) {
 	now = now.UTC()
 	c.ConsumedAt = &now
 	c.UpdatedAt = now
 }
 
-// Matches reports whether raw equals the stored secret.
+// Matches reports whether raw equals the stored secret. OTPs are compared via
+// bcrypt, magic-link tokens via their SHA-256 hash.
 func (c *VerificationCode) Matches(raw string) bool {
 	if c.Purpose == PurposeMagicLink {
 		return HashSecret(raw) == c.CodeHash

@@ -36,7 +36,9 @@ type RolesPermissionsSeeder struct {
 	extraPermissions []command.BootstrapPermission
 }
 
-// NewRolesPermissionsSeeder builds the seeder. Extras may be nil.
+// NewRolesPermissionsSeeder builds the seeder. Extras may be nil; when given,
+// they are ensured in addition to the module's built-in DefaultRoles and
+// DefaultPermissions.
 func NewRolesPermissionsSeeder(db *sql.DB, dbDriver string, extraRoles []command.BootstrapRole, extraPermissions []command.BootstrapPermission) *RolesPermissionsSeeder {
 	return &RolesPermissionsSeeder{db: db, dbDriver: dbDriver, extraRoles: extraRoles, extraPermissions: extraPermissions}
 }
@@ -47,7 +49,10 @@ func Register(reg *seed.Registry, db *sql.DB, dbDriver string) {
 	reg.Register("rbac.roles_permissions", NewRolesPermissionsSeeder(db, dbDriver, nil, nil))
 }
 
-// Run implements seed.Seed.
+// Run implements seed.Seed. It bootstraps the built-in plus any extra roles
+// and permissions through the module's Bootstrap use case; the operation is
+// idempotent (existing codes are left untouched) and returns an error when a
+// repository write fails.
 func (s *RolesPermissionsSeeder) Run(ctx context.Context) error {
 	roles := infrastructure.NewRoleRepository(s.db, s.dbDriver)
 	permissions := infrastructure.NewPermissionRepository(s.db, s.dbDriver)

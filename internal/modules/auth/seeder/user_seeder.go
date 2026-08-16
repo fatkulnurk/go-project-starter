@@ -18,12 +18,16 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
 
-// Roles assigns roles to a seeded user.
+// Roles assigns roles to a seeded user. It is the narrow slice of the RBAC
+// service the seeder needs; a nil Roles value disables role assignment.
 type Roles interface {
+	// AssignRole grants roleName to the user identified by userID, returning an
+	// error when the assignment cannot be recorded.
 	AssignRole(ctx context.Context, userID, roleName string) error
 }
 
-// SeedUser describes a demo account created by UserSeeder.
+// SeedUser describes a demo account created by UserSeeder. An empty password
+// falls back to "password123"; Roles are assigned on top of the default role.
 type SeedUser struct {
 	Name     string
 	Email    string
@@ -41,7 +45,8 @@ var DefaultUsers = []SeedUser{
 	{Name: "Demo User", Email: "user@example.com", Password: "password123"},
 }
 
-// Register wires the user seeder into a seed registry under "auth.users".
+// Register wires the user seeder into a seed registry under "auth.users", so
+// `go run ./cmd/seed` can run it by name.
 func Register(reg *seed.Registry, deps Deps) {
 	reg.Register("auth.users", NewUserSeeder(deps, DefaultUsers))
 }
@@ -68,12 +73,14 @@ type UserSeeder struct {
 	users []SeedUser
 }
 
-// NewUserSeeder builds the seeder.
+// NewUserSeeder builds the seeder around the given deps and demo users. The
+// users slice replaces the DefaultUsers set used by Register.
 func NewUserSeeder(deps Deps, users []SeedUser) *UserSeeder {
 	return &UserSeeder{deps: deps, users: users}
 }
 
-// Run implements seed.Seed.
+// Run implements seed.Seed, seeding every configured user in order. It stops
+// at the first failure and reports it.
 func (s *UserSeeder) Run(ctx context.Context) error {
 	repo := infrastructure.NewUserRepository(s.deps.DB, s.deps.DBDriver, s.deps.Location)
 	for _, u := range s.users {

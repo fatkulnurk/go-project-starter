@@ -23,8 +23,9 @@ type Common struct {
 }
 
 // templateExecutor is satisfied by both html/template.Template and
-// text/template.Template.
+// text/template.Template, so Render works with either template set.
 type templateExecutor interface {
+	// ExecuteTemplate renders the named template into w with the given data.
 	ExecuteTemplate(w io.Writer, name string, data any) error
 }
 

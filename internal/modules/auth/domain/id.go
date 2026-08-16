@@ -13,7 +13,8 @@ import (
 // newID returns a version-7 UUID string (time-ordered, sorts by insertion).
 func newID() string { return id.New() }
 
-// NewID exposes the internal ID generator for infrastructure and adapters.
+// NewID exposes the internal ID generator for infrastructure and adapters. It
+// returns a version-7 UUID that sorts by creation time.
 func NewID() string { return newID() }
 
 // NewOpaqueToken returns a cryptographically random 64-char hex token used for

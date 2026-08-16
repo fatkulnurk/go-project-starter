@@ -8,13 +8,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Deps bundles what the handlers need.
+// Deps bundles what the handlers need. Common carries the branding used when
+// rendering the page.
 type Deps struct {
 	// Common carries branding for the rendered page.
 	Common view.Common
 }
 
-// RegisterRoutes mounts the homepage routes.
+// RegisterRoutes mounts the homepage routes, rendering the welcome page for
+// GET /.
 func RegisterRoutes(r chi.Router, deps Deps) {
 	h := &handler{deps: deps}
 	r.Get("/", h.welcome)

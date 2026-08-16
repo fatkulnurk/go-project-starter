@@ -35,12 +35,18 @@ type accessClaims struct {
 }
 
 // IssueAccessToken implements apptoken.Manager.
+// It mints an HS256 token carrying the user ID, roles and a jti (generated
+// when c.JTI is empty) valid for ttl. The context is ignored.
 func (m *Manager) IssueAccessToken(_ context.Context, c apptoken.Claims, ttl time.Duration) (string, error) {
 	now := time.Now().UTC()
+	jti := c.JTI
+	if jti == "" {
+		jti = newID()
+	}
 	claims := accessClaims{
 		UserID: c.UserID,
 		Roles:  c.Roles,
-		JTI:    newID(),
+		JTI:    jti,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    m.issuer,
 			Audience:  jwt.ClaimStrings{m.audience},
@@ -57,6 +63,8 @@ func (m *Manager) IssueAccessToken(_ context.Context, c apptoken.Claims, ttl tim
 }
 
 // ParseAccessToken implements apptoken.Manager.
+// It verifies the HS256 signature, expiry and issuer/audience (when
+// configured) and returns ErrInvalid for any failure. The context is ignored.
 func (m *Manager) ParseAccessToken(_ context.Context, raw string) (*apptoken.Claims, error) {
 	var claims accessClaims
 	parser := jwt.NewParser(
@@ -81,7 +89,7 @@ func (m *Manager) ParseAccessToken(_ context.Context, raw string) (*apptoken.Cla
 	if m.audience != "" && !containsString(claims.Audience, m.audience) {
 		return nil, fmt.Errorf("%w: audience mismatch", ErrInvalid)
 	}
-	return &apptoken.Claims{UserID: claims.UserID, Roles: claims.Roles}, nil
+	return &apptoken.Claims{UserID: claims.UserID, Roles: claims.Roles, JTI: claims.JTI}, nil
 }
 
 func containsString(list []string, want string) bool {
@@ -94,6 +102,8 @@ func containsString(list []string, want string) bool {
 }
 
 // ErrInvalid is returned for structurally invalid tokens.
+// ParseAccessToken returns it (possibly wrapped) when signature, expiry or
+// issuer/audience validation fails.
 var ErrInvalid = errors.New("invalid token")
 
 // newID returns a version-7 UUID string, used for the jti claim.

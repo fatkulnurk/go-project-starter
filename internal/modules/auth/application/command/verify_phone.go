@@ -2,17 +2,18 @@ package command
 
 import (
 	"context"
-	"strings"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
 
-// VerifyPhoneCommand verifies a phone number with its OTP.
+// VerifyPhoneCommand verifies a phone number with its OTP. OldCode confirms
+// the previous number when a contact change is being applied.
 type VerifyPhoneCommand struct {
-	Phone string
-	Code  string
+	Phone   string
+	Code    string
+	OldCode string
 }
 
 // VerifyPhone confirms a phone. It applies a pending contact change when the
@@ -25,24 +26,30 @@ type VerifyPhone struct {
 	auditor        audit.Recorder
 	clock          clock.Clock
 	otpMaxAttempts int
+	// countryCode expands local phone numbers (leading 0) into E.164.
+	countryCode string
 }
 
-// NewVerifyPhone builds the use case.
-func NewVerifyPhone(users domain.UserRepository, codes domain.VerificationCodeRepository, pending domain.PendingContactChangeRepository, auditor audit.Recorder, clk clock.Clock, otpMaxAttempts int) *VerifyPhone {
-	return &VerifyPhone{users: users, codes: codes, pending: pending, auditor: auditor, clock: clk, otpMaxAttempts: otpMaxAttempts}
+// NewVerifyPhone builds the phone-verification use case from the user, code
+// and pending-change repositories, the auditor, clock and attempt limit.
+func NewVerifyPhone(users domain.UserRepository, codes domain.VerificationCodeRepository, pending domain.PendingContactChangeRepository, auditor audit.Recorder, clk clock.Clock, otpMaxAttempts int, countryCode string) *VerifyPhone {
+	return &VerifyPhone{users: users, codes: codes, pending: pending, auditor: auditor, clock: clk, otpMaxAttempts: otpMaxAttempts, countryCode: countryCode}
 }
 
-// Execute runs the use case. It is idempotent for already-verified phones.
+// Execute verifies a phone with its OTP, applying a pending contact change
+// when one exists. It is idempotent for already-verified numbers and returns
+// ErrInvalid for malformed input or wrong codes, never revealing whether the
+// phone is registered.
 func (uc *VerifyPhone) Execute(ctx context.Context, cmd VerifyPhoneCommand) error {
-	phone := strings.TrimSpace(cmd.Phone)
-	if phone == "" || cmd.Code == "" {
+	phone, err := domain.NormalizePhone(cmd.Phone, uc.countryCode)
+	if err != nil || cmd.Code == "" {
 		return domain.ErrInvalid
 	}
 
 	if pending, err := uc.pending.FindPendingByNewValue(ctx, domain.ChannelPhone, phone); err != nil {
 		return err
 	} else if pending != nil {
-		return uc.applyPending(ctx, pending, phone, cmd.Code)
+		return uc.applyPending(ctx, pending, phone, cmd.Code, cmd.OldCode)
 	}
 
 	user, err := uc.users.FindByPhone(ctx, phone)
@@ -76,14 +83,28 @@ func (uc *VerifyPhone) Execute(ctx context.Context, cmd VerifyPhoneCommand) erro
 }
 
 // applyPending confirms the OTP for a pending contact change and applies the
-// new value to the user.
-func (uc *VerifyPhone) applyPending(ctx context.Context, pending *domain.PendingContactChange, phone, code string) error {
+// new value to the user. When the account had a previous number, a second OTP
+// sent to it must also be confirmed so a stolen session cannot hijack the
+// account.
+func (uc *VerifyPhone) applyPending(ctx context.Context, pending *domain.PendingContactChange, phone, code, oldCode string) error {
 	user, err := uc.users.FindByID(ctx, pending.UserID)
 	if err != nil {
 		return err
 	}
 	if user == nil {
 		return domain.ErrNotFound
+	}
+	// Validate the old-channel code first: consuming the new-value code before
+	// the old one checks out would burn the new code on a single typo, forcing
+	// the user to re-request codes entirely.
+	if pending.OldValue != "" {
+		old, err := uc.codes.FindLatestActive(ctx, user.ID, domain.PurposeVerifyOld, domain.ChannelPhone)
+		if err != nil {
+			return err
+		}
+		if err := validateCode(ctx, uc.codes, old, oldCode, uc.otpMaxAttempts); err != nil {
+			return err
+		}
 	}
 	vc, err := uc.codes.FindLatestActive(ctx, user.ID, domain.PurposeVerify, domain.ChannelPhone)
 	if err != nil {
@@ -115,7 +136,7 @@ func (uc *VerifyPhone) audit(ctx context.Context, subjectType, subjectID string,
 	if uc.auditor == nil {
 		return
 	}
-	_ = uc.auditor.Record(ctx, audit.Entry{
+	audit.RecordBestEffort(ctx, uc.auditor, audit.Entry{
 		SubjectType: subjectType,
 		SubjectID:   subjectID,
 		Action:      action,

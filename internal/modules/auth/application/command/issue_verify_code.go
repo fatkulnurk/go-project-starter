@@ -15,14 +15,21 @@ import (
 // for the given channel, persisting it and enqueuing delivery to to. It returns
 // the raw code so dev mode can echo it back to the client.
 func issueVerificationCode(ctx context.Context, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, userID, name string, channel domain.Channel, to string, otpLength int, otpTTL time.Duration, clk clock.Clock) (string, error) {
-	if err := codes.InvalidateByUser(ctx, userID, domain.PurposeVerify); err != nil {
+	return issueCode(ctx, codes, enqueuer, userID, name, channel, domain.PurposeVerify, to, otpLength, otpTTL, clk)
+}
+
+// issueCode is issueVerificationCode generalized to any purpose. PurposeVerify
+// codes confirm a new contact value; PurposeVerifyOld codes are sent to the
+// current address when a contact change must be confirmed on the old channel.
+func issueCode(ctx context.Context, codes domain.VerificationCodeRepository, enqueuer queue.Enqueuer, userID, name string, channel domain.Channel, purpose domain.Purpose, to string, otpLength int, otpTTL time.Duration, clk clock.Clock) (string, error) {
+	if err := codes.InvalidateByUserChannel(ctx, userID, purpose, channel); err != nil {
 		return "", err
 	}
 	code, err := otp.Generate(otpLength)
 	if err != nil {
 		return "", err
 	}
-	vc, err := domain.NewVerificationCode(userID, channel, domain.PurposeVerify, code, otpTTL, clk.Now())
+	vc, err := domain.NewVerificationCode(userID, channel, purpose, code, otpTTL, clk.Now())
 	if err != nil {
 		return "", err
 	}

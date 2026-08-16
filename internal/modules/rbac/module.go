@@ -1,6 +1,7 @@
 package rbac
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -12,11 +13,14 @@ import (
 	rbaccache "github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/command"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/query"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/infrastructure"
 	"github.com/go-chi/chi/v5"
 )
 
-// Dependencies are wired by the composition root.
+// Dependencies are wired by the composition root. Cache and CacheTTL are
+// optional; a nil Cache disables the versioned permission cache and a nil
+// Auditor skips audit recording.
 type Dependencies struct {
 	DB       *sql.DB
 	DBDriver string
@@ -25,14 +29,22 @@ type Dependencies struct {
 	Auditor  audit.Recorder
 }
 
-// Module wires the RBAC use cases and their adapters.
+// Module wires the RBAC use cases and their adapters. It owns the repositories
+// and the permission cache, and exposes them through the API, Service and
+// Authorizer surfaces.
 type Module struct {
-	API   API
-	svc   Service
-	authz authorization.Authorizer
+	API         API
+	svc         Service
+	authz       authorization.Authorizer
+	roles       domain.RoleRepository
+	permissions domain.PermissionRepository
+	bumper      command.CacheBumper
+	auditor     audit.Recorder
 }
 
-// New constructs the RBAC module.
+// New constructs the RBAC module. It builds every use case against the given
+// dependencies and returns the assembled Module; it never fails, so callers
+// can rely on the returned module being fully wired.
 func New(deps Dependencies) *Module {
 	roles := infrastructure.NewRoleRepository(deps.DB, deps.DBDriver)
 	permissions := infrastructure.NewPermissionRepository(deps.DB, deps.DBDriver)
@@ -77,12 +89,25 @@ func New(deps Dependencies) *Module {
 			ListRoles:           query.NewListRoles(roles),
 			ListPermissions:     query.NewListPermissions(permissions),
 		},
-		svc:   svc,
-		authz: &Authorizer{svc: svc},
+		svc:         svc,
+		authz:       &Authorizer{svc: svc},
+		roles:       roles,
+		permissions: permissions,
+		bumper:      pcache,
+		auditor:     deps.Auditor,
 	}
 }
 
-// Service exposes the module's public interface for other modules.
+// Bootstrap ensures the well-known roles and permissions exist. It is
+// idempotent and safe to call on every startup; the composition root should
+// run it after the module is built so a fresh database is usable immediately
+// (registration relies on the default "user" role existing).
+func (m *Module) Bootstrap(ctx context.Context, opts command.BootstrapOptions) error {
+	return command.NewBootstrap(m.roles, m.permissions, m.bumper, m.auditor).Execute(ctx, opts)
+}
+
+// Service exposes the module's public interface for other modules. It is the
+// only sanctioned cross-module dependency (see arch.yaml).
 func (m *Module) Service() Service { return m.svc }
 
 // Authorizer exposes the module's authorization implementation for protected
@@ -90,6 +115,7 @@ func (m *Module) Service() Service { return m.svc }
 func (m *Module) Authorizer() authorization.Authorizer { return m.authz }
 
 // RegisterAPI mounts the module's admin API routes behind auth + rbac.manage.
+// It wires every use case from the module's API surface into the chi router.
 func (m *Module) RegisterAPI(r chi.Router, authn appauth.Authenticator, authz authorization.Authorizer) {
 	api.RegisterRoutes(r, api.Deps{
 		CreateRole:          m.API.CreateRole,

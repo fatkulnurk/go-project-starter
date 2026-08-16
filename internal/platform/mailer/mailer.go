@@ -9,13 +9,15 @@ import (
 )
 
 // New returns a mailer.MailSender for the configured driver.
+// Unsupported drivers return an error; callers should Close the sender once
+// the application shuts down.
 func New(cfg config.MailConfig) (mailer.MailSender, error) {
 	switch cfg.Driver {
-	case "log":
+	case config.DriverLog:
 		return NewLog(), nil
-	case "smtp":
+	case config.DriverSMTP:
 		return NewSMTP(cfg.From, cfg.FromName, cfg.SMTP)
-	case "ses":
+	case config.DriverSES:
 		return NewSES(cfg.From, cfg.FromName, cfg.SES)
 	default:
 		return nil, fmt.Errorf("unknown mail driver %q", cfg.Driver)

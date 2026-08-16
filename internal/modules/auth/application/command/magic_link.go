@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/queue"
@@ -11,6 +10,7 @@ import (
 )
 
 // MagicLinkRequestCommand requests a magic login link for an email address.
+// IP is used only for rate limiting.
 type MagicLinkRequestCommand struct {
 	Email string
 	IP    string
@@ -32,15 +32,18 @@ type MagicLinkRequest struct {
 	limiter  *rateLimiter
 }
 
-// NewMagicLinkRequest builds the use case.
+// NewMagicLinkRequest builds the magic-link request use case from the enqueuer,
+// the link TTL and the rate limiter.
 func NewMagicLinkRequest(enqueuer queue.Enqueuer, magicTTL time.Duration, limiter *rateLimiter) *MagicLinkRequest {
 	return &MagicLinkRequest{enqueuer: enqueuer, magicTTL: magicTTL, limiter: limiter}
 }
 
-// Execute runs the use case.
+// Execute normalizes the email, rate-checks the request, and enqueues a
+// magic-link delivery task. It returns a uniform success (ErrInvalid only for
+// malformed email) so registration status is never revealed.
 func (uc *MagicLinkRequest) Execute(ctx context.Context, cmd MagicLinkRequestCommand) (*MagicLinkRequestResult, error) {
-	email := strings.ToLower(strings.TrimSpace(cmd.Email))
-	if email == "" {
+	email, err := domain.NormalizeEmail(cmd.Email)
+	if err != nil {
 		return nil, domain.ErrInvalid
 	}
 	if uc.limiter != nil {

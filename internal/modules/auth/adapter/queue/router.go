@@ -13,7 +13,8 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/template"
 )
 
-// Common is the branding injected into every rendered message.
+// Common is the branding injected into every rendered message. It re-exports
+// the template package's Common type for the handler constructors.
 type Common = template.Common
 
 // Register wires every auth task handler onto the worker. common supplies the

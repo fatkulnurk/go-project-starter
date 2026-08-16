@@ -13,6 +13,8 @@ import (
 // initialization. Run must be idempotent and safe to re-run — existing rows
 // are skipped, not failed.
 type Seed interface {
+	// Run performs the seeding. It must be safe to call repeatedly; returning
+	// an error aborts the registry with the seeder's name in the message.
 	Run(ctx context.Context) error
 }
 
@@ -23,7 +25,8 @@ type Registry struct {
 	seeders map[string]Seed
 }
 
-// New builds an empty registry.
+// New builds an empty registry. Seeders are added with Register before Run,
+// and the registry then executes them in registration order.
 func New() *Registry {
 	return &Registry{seeders: map[string]Seed{}}
 }

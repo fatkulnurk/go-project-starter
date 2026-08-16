@@ -23,6 +23,8 @@ type SES struct {
 }
 
 // NewSES builds an SES mail sender.
+// It returns an error when cfg.Region is empty or the AWS config cannot be
+// loaded; empty credentials fall back to the default AWS credential chain.
 func NewSES(from, fromName string, cfg config.SESConfig) (*SES, error) {
 	if cfg.Region == "" {
 		return nil, fmt.Errorf("SES_REGION is required")
@@ -43,16 +45,24 @@ func NewSES(from, fromName string, cfg config.SESConfig) (*SES, error) {
 	return &SES{client: client, from: from, fromName: fromName}, nil
 }
 
-// Send implements mailer.MailSender.
+// Send implements mailer.MailSender. Per-message From/FromName override the
+// driver defaults when set.
 func (s *SES) Send(ctx context.Context, msg mailer.Message) error {
-	data, err := buildMIME(s.from, s.fromName, msg)
+	from, fromName := s.from, s.fromName
+	if msg.From != "" {
+		from = msg.From
+	}
+	if msg.FromName != "" {
+		fromName = msg.FromName
+	}
+	data, err := buildMIME(from, fromName, msg)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, defaultSendTimeout)
 	defer cancel()
 	_, err = s.client.SendEmail(ctx, &sesv2.SendEmailInput{
-		FromEmailAddress: aws.String(s.from),
+		FromEmailAddress: aws.String(from),
 		Destination: &types.Destination{
 			ToAddresses: msg.To,
 		},
@@ -65,3 +75,7 @@ func (s *SES) Send(ctx context.Context, msg mailer.Message) error {
 	}
 	return nil
 }
+
+// Close implements mailer.MailSender. The SES client has no pooled resources,
+// so nothing is released and nil is always returned.
+func (s *SES) Close() error { return nil }

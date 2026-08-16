@@ -6,7 +6,8 @@ import "time"
 // request.
 type PendingContactChangeStatus string
 
-// Pending contact change statuses.
+// Pending contact change statuses track a change from request to application.
+// A change is either still awaiting confirmation or already applied.
 const (
 	PendingStatusPending PendingContactChangeStatus = "pending"
 	PendingStatusApplied PendingContactChangeStatus = "applied"
@@ -44,7 +45,8 @@ func NewPendingContactChange(userID string, channel Channel, oldValue, newValue 
 	}
 }
 
-// Apply marks the pending change as applied at now.
+// Apply marks the pending change as applied at now, recording the AppliedAt
+// timestamp and bumping UpdatedAt.
 func (p *PendingContactChange) Apply(now time.Time) {
 	now = now.UTC()
 	p.Status = PendingStatusApplied
@@ -52,5 +54,6 @@ func (p *PendingContactChange) Apply(now time.Time) {
 	p.UpdatedAt = now
 }
 
-// IsApplied reports whether the change was already applied.
+// IsApplied reports whether the change was already applied, i.e. its status
+// is PendingStatusApplied.
 func (p *PendingContactChange) IsApplied() bool { return p.Status == PendingStatusApplied }

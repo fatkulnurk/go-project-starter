@@ -16,7 +16,8 @@ type SyncRolePermissionsCommand struct {
 	Permissions []string // permission codes
 }
 
-// SyncRolePermissions replaces a role's permissions.
+// SyncRolePermissions replaces a role's permissions. Missing permissions are
+// created on the fly and the cache is invalidated after the replacement.
 type SyncRolePermissions struct {
 	roles       domain.RoleRepository
 	permissions domain.PermissionRepository
@@ -24,12 +25,17 @@ type SyncRolePermissions struct {
 	audit       audit.Recorder
 }
 
-// NewSyncRolePermissions builds the use case.
+// NewSyncRolePermissions builds the use case. bumper may be nil to skip cache
+// invalidation and auditor may be nil to skip audit recording.
 func NewSyncRolePermissions(roles domain.RoleRepository, permissions domain.PermissionRepository, bumper CacheBumper, auditor audit.Recorder) *SyncRolePermissions {
 	return &SyncRolePermissions{roles: roles, permissions: permissions, bumper: bumper, audit: auditor}
 }
 
-// Execute runs the use case.
+// Execute runs the use case. It returns domain.ErrNotFound when the role does
+// not exist, deduplicates repeated permission codes and creates missing ones
+// (group derived from the code prefix), then atomically replaces the role's
+// permission set, bumps the cache (checked, one retry) and records an audit
+// entry. Repository errors are propagated unchanged.
 func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissionsCommand) error {
 	role, err := uc.roles.FindByCode(ctx, strings.TrimSpace(cmd.Role))
 	if err != nil {
@@ -45,11 +51,17 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 	}
 	var ids []string
 	var newCodes []string
+	seen := make(map[string]struct{})
 	for _, raw := range cmd.Permissions {
 		code := strings.TrimSpace(raw)
 		if code == "" {
 			continue
 		}
+		if _, dup := seen[code]; dup {
+			// Deduplicate: a repeated code would violate the composite PK.
+			continue
+		}
+		seen[code] = struct{}{}
 		perm, err := uc.permissions.FindByCode(ctx, code)
 		if err != nil {
 			return err
@@ -69,9 +81,9 @@ func (uc *SyncRolePermissions) Execute(ctx context.Context, cmd SyncRolePermissi
 	if err := uc.roles.SetPermissions(ctx, role.ID, ids); err != nil {
 		return err
 	}
-	bumpBestEffort(ctx, uc.bumper)
+	bumpChecked(ctx, uc.bumper)
 	if uc.audit != nil {
-		_ = uc.audit.Record(ctx, audit.Entry{
+		audit.RecordBestEffort(ctx, uc.audit, audit.Entry{
 			SubjectType: "role_permissions",
 			SubjectID:   role.ID,
 			Action:      audit.ActionUpdated,

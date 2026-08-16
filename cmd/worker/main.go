@@ -58,6 +58,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	defer mailSender.Close()
 
 	smsSender, err := sms.New(cfg.SMS)
 	if err != nil {
@@ -76,7 +77,7 @@ func run() error {
 	defer queueClient.Close()
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
-	hasher := hash.NewHash(0)
+	hasher := hash.NewBCrypt(0)
 	clk := clock.Real{Loc: cfg.Location()}
 	devMode := cfg.Environment != config.EnvironmentProduction
 
@@ -106,6 +107,8 @@ func run() error {
 			BaseURL:               cfg.BaseURL,
 			AppName:               cfg.AppName,
 			AssetsBaseURL:         cfg.AssetsBaseURLOrDefault(),
+			DefaultCountryCode:    cfg.Auth.DefaultCountryCode,
+			MaxActiveSessions:     cfg.Auth.MaxActiveSessions,
 			DevMode:               devMode,
 		},
 	})

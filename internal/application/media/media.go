@@ -28,7 +28,8 @@ const (
 	CollectionAvatar  = "avatar"
 )
 
-// Media is a file attached to a model.
+// Media is a file attached to a model: the metadata row plus the storage key
+// of the actual object. It is the value returned by Library operations.
 type Media struct {
 	ID             string
 	ModelType      string
@@ -43,7 +44,8 @@ type Media struct {
 	UpdatedAt      time.Time
 }
 
-// AddMediaInput carries what is needed to attach a new file.
+// AddMediaInput carries what is needed to attach a new file: which model and
+// collection it belongs to, its display name and MIME type, and the content.
 type AddMediaInput struct {
 	ModelType  string
 	ModelID    string
@@ -58,15 +60,22 @@ type AddMediaInput struct {
 // media. It is implemented by internal/platform/media and injectable into any
 // module or adapter.
 type Library interface {
-	// AddMedia stores the file and registers it for a model.
+	// AddMedia stores the file under a generated key and registers the media
+	// row for the given model/collection. It returns the created record.
 	AddMedia(ctx context.Context, in AddMediaInput) (*Media, error)
+
 	// GetMedia returns the metadata of one record; ErrNotFound when missing.
+	// It does not read the stored object; use URL to build a fetchable link.
 	GetMedia(ctx context.Context, id string) (*Media, error)
+
 	// ListByModel returns the media attached to a model, optionally filtered
-	// by collection.
+	// by collection (empty = every collection).
 	ListByModel(ctx context.Context, modelType, modelID, collection string) ([]*Media, error)
-	// RemoveMedia deletes the object from storage and the database row.
+
+	// RemoveMedia deletes the object from storage and the database row. It is
+	// a no-op when the record does not exist.
 	RemoveMedia(ctx context.Context, id string) error
+
 	// URL returns a public URL for the media's stored object; ErrNoURL when
 	// the storage driver cannot expose one.
 	URL(ctx context.Context, id string) (string, error)

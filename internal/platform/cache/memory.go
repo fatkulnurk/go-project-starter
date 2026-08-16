@@ -22,11 +22,13 @@ type memItem struct {
 }
 
 // NewMemory builds an empty memory cache.
+// Items are held in memory only and are lost when the process exits.
 func NewMemory() *Memory {
 	return &Memory{items: make(map[string]memItem)}
 }
 
-// Get implements cache.Cache.
+// Get implements cache.Cache. The context is ignored. It returns
+// cache.ErrNotFound when the key is missing or expired.
 func (m *Memory) Get(_ context.Context, key string) ([]byte, error) {
 	m.mu.RLock()
 	item, ok := m.items[key]
@@ -37,7 +39,8 @@ func (m *Memory) Get(_ context.Context, key string) ([]byte, error) {
 	return item.value, nil
 }
 
-// Set implements cache.Cache.
+// Set implements cache.Cache. The context is ignored. ttl=0 stores the value
+// without an expiry; the value slice is kept by reference.
 func (m *Memory) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
 	item := memItem{value: value}
 	if ttl > 0 {
@@ -49,7 +52,8 @@ func (m *Memory) Set(_ context.Context, key string, value []byte, ttl time.Durat
 	return nil
 }
 
-// Delete implements cache.Cache.
+// Delete implements cache.Cache. The context is ignored. Deleting a missing
+// key is a no-op and never returns an error.
 func (m *Memory) Delete(_ context.Context, key string) error {
 	m.mu.Lock()
 	delete(m.items, key)
@@ -57,7 +61,23 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-// Increment implements cache.Cache.
+// GetDelete implements cache.Cache. The read and delete happen under one lock,
+// so a concurrent GetDelete cannot double-redeem a single-use token.
+func (m *Memory) GetDelete(_ context.Context, key string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	item, ok := m.items[key]
+	if !ok || (!item.expiresAt.IsZero() && time.Now().After(item.expiresAt)) {
+		delete(m.items, key)
+		return nil, cache.ErrNotFound
+	}
+	delete(m.items, key)
+	return item.value, nil
+}
+
+// Increment implements cache.Cache. The context is ignored. A missing or
+// non-numeric value counts as zero before adding delta; the new value is
+// returned and the counter is stored as text.
 func (m *Memory) Increment(_ context.Context, key string, delta int64) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,10 +96,15 @@ func (m *Memory) Increment(_ context.Context, key string, delta int64) (int64, e
 	return n, nil
 }
 
-// Expire implements cache.Cache.
+// Expire implements cache.Cache. The context is ignored. A non-positive ttl
+// removes the key; otherwise the key's expiry is extended to now+ttl.
 func (m *Memory) Expire(_ context.Context, key string, ttl time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if ttl <= 0 {
+		delete(m.items, key)
+		return nil
+	}
 	item, ok := m.items[key]
 	if !ok {
 		return nil
@@ -89,8 +114,10 @@ func (m *Memory) Expire(_ context.Context, key string, ttl time.Duration) error 
 	return nil
 }
 
-// Ping implements cache.Cache.
+// Ping implements cache.Cache. An in-memory cache is always reachable, so it
+// returns nil without touching the context.
 func (m *Memory) Ping(context.Context) error { return nil }
 
-// Close implements cache.Cache.
+// Close implements cache.Cache. There are no pooled resources to release, so
+// it returns nil.
 func (m *Memory) Close() error { return nil }

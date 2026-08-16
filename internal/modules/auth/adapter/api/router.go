@@ -16,6 +16,7 @@ import (
 )
 
 // Deps bundles the application use cases and contracts the handlers need.
+// Cache and the public rate-limit values protect the unauthenticated endpoints.
 type Deps struct {
 	Register         *command.Register
 	Login            *command.Login
@@ -28,8 +29,14 @@ type Deps struct {
 	Refresh          *command.Refresh
 	Logout           *command.Logout
 	UpdateProfile    *command.UpdateProfile
+	ChangePassword   *command.ChangePassword
+	SetupTOTP        *command.SetupTOTP
+	ConfirmTOTP      *command.ConfirmTOTP
+	DisableTOTP      *command.DisableTOTP
+	VerifyMFA        *command.VerifyMFA
+	SessionRevoke    *command.SessionRevoke
 	Profile          *query.Profile
-	FindUserByEmail  *query.FindUserByEmail
+	Sessions         *query.Sessions
 	Authenticator    appauth.Authenticator
 	// Cache + rate limits protect the unauthenticated endpoints against
 	// brute force and message-bombing abuse.
@@ -38,7 +45,9 @@ type Deps struct {
 	PublicRateLimitWindow time.Duration
 }
 
-// RegisterRoutes mounts the auth API under /api/v1/auth.
+// RegisterRoutes mounts the auth API under /api/v1/auth, split into a public,
+// rate-limited group and an authenticated group. deps supplies every use case
+// plus the cache backing the public rate limits.
 func RegisterRoutes(r chi.Router, deps Deps) {
 	h := &handler{deps: deps}
 
@@ -48,6 +57,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 			r.Use(public)
 			r.Post("/register", h.register)
 			r.Post("/login", h.login)
+			r.Post("/mfa/verify", h.verifyMFA)
 			r.Post("/magic-link", h.magicLinkRequest)
 			r.Post("/magic-link/verify", h.magicLinkVerify)
 			r.Get("/magic-link/verify", h.magicLinkVerifyGet)
@@ -59,15 +69,23 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 		})
 
 		r.Group(func(r chi.Router) {
+			r.Use(platformhttp.AuditActor)
 			r.Use(platformhttp.Authenticate(deps.Authenticator))
 			r.Post("/logout", h.logout)
 			r.Get("/me", h.me)
 			r.Patch("/me", h.updateProfile)
+			r.Post("/me/password", h.changePassword)
+			r.Get("/sessions", h.sessions)
+			r.Delete("/sessions/{familyID}", h.revokeSession)
+			r.Post("/mfa/setup", h.setupTOTP)
+			r.Post("/mfa/confirm", h.confirmTOTP)
+			r.Post("/mfa/disable", h.disableTOTP)
 		})
 	})
 }
 
-// identity extracts the authenticated identity or returns an error.
+// identity returns the authenticated identity from the request context. It
+// returns ErrUnauthenticated when no identity is present.
 func identity(ctx context.Context) (*appauth.Identity, error) {
 	id := appauth.IdentityFrom(ctx)
 	if id == nil {

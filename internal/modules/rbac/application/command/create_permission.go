@@ -16,18 +16,23 @@ type CreatePermissionCommand struct {
 	Name  string
 }
 
-// CreatePermission persists a new permission.
+// CreatePermission persists a new permission. It rejects blank codes/names and
+// duplicate permission codes, and records an audit entry when an auditor is
+// configured.
 type CreatePermission struct {
 	permissions domain.PermissionRepository
 	auditor     audit.Recorder
 }
 
-// NewCreatePermission builds the use case.
+// NewCreatePermission builds the use case. auditor may be nil to skip audit
+// recording.
 func NewCreatePermission(permissions domain.PermissionRepository, auditor audit.Recorder) *CreatePermission {
 	return &CreatePermission{permissions: permissions, auditor: auditor}
 }
 
-// Execute runs the use case.
+// Execute runs the use case. cmd is trimmed before validation; it returns
+// domain.ErrInvalid on blank code/name and domain.ErrConflict when the
+// permission code already exists. Repository errors are propagated unchanged.
 func (uc *CreatePermission) Execute(ctx context.Context, cmd CreatePermissionCommand) error {
 	code := strings.TrimSpace(cmd.Code)
 	name := strings.TrimSpace(cmd.Name)
@@ -49,7 +54,7 @@ func (uc *CreatePermission) Execute(ctx context.Context, cmd CreatePermissionCom
 		return err
 	}
 	if uc.auditor != nil {
-		_ = uc.auditor.Record(ctx, audit.Entry{
+		audit.RecordBestEffort(ctx, uc.auditor, audit.Entry{
 			SubjectType: "permissions",
 			SubjectID:   perm.ID,
 			Action:      audit.ActionCreated,

@@ -14,26 +14,35 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/application/authorization"
 )
 
-// StatusCoder is implemented by errors that know their HTTP status.
+// StatusCoder is implemented by errors that know their HTTP status, letting
+// the HTTP layer render the right status code without matching on error text.
 type StatusCoder interface {
+	// HTTPStatus returns the HTTP status code that represents this error.
+	// The HTTP layer uses it to pick the response's status line.
 	HTTPStatus() int
 }
 
-// ErrorCoder is implemented by errors that know their machine-readable code.
+// ErrorCoder is implemented by errors that know their machine-readable code,
+// which becomes the {"error":{"code":...}} envelope field.
 type ErrorCoder interface {
+	// ErrorCode returns the stable, machine-readable error code.
+	// It is stable across deployments so clients can branch on it.
 	ErrorCode() string
 }
 
 // Kind pairs an HTTP status with a stable machine-readable code.
+// Kinds are attached to errors via New/Wrap and drive the envelope rendering.
 type Kind struct {
 	Status int
 	Code   string
 }
 
-// HTTPStatus implements StatusCoder.
+// HTTPStatus implements StatusCoder by delegating to the kind's status code,
+// so Error values can be passed straight to the HTTP layer.
 func (k Kind) HTTPStatus() int { return k.Status }
 
-// ErrorCode implements ErrorCoder.
+// ErrorCode implements ErrorCoder by delegating to the kind's machine code,
+// so Error values carry a stable, branchable code.
 func (k Kind) ErrorCode() string { return k.Code }
 
 // API kinds. The zero case (Unknown) maps to 500 "internal".
@@ -51,32 +60,39 @@ var (
 	KindInternal           = Kind{Status: 500, Code: "internal"}
 )
 
-// Error is a sentinel error with an attached kind.
+// Error is a sentinel error with an attached kind: it carries the HTTP status
+// and machine code needed to render one consistent error envelope.
 type Error struct {
 	Kind Kind
 	Msg  string
 }
 
-// New builds a sentinel error for kind.
+// New builds a sentinel error for kind with a fixed message.
+// The message is user-facing and never includes internal details.
 func New(kind Kind, message string) error {
 	return &Error{Kind: kind, Msg: message}
 }
 
 // Wrap adds context to an existing error, keeping its kind.
+// It is the fmt.Errorf of this package for errors that must map to a status.
 func Wrap(kind Kind, format string, args ...any) error {
 	return &Error{Kind: kind, Msg: fmt.Sprintf(format, args...)}
 }
 
-// Error implements error.
+// Error implements error, returning the human-readable message that is safe
+// to surface to clients.
 func (e *Error) Error() string { return e.Msg }
 
-// HTTPStatus implements StatusCoder.
+// HTTPStatus implements StatusCoder, returning the error's HTTP status from
+// its attached kind.
 func (e *Error) HTTPStatus() int { return e.Kind.Status }
 
-// ErrorCode implements ErrorCoder.
+// ErrorCode implements ErrorCoder, returning the error's machine code from its
+// attached kind.
 func (e *Error) ErrorCode() string { return e.Kind.Code }
 
-// Unwrap lets errors.Is match the underlying kind sentinel.
+// Unwrap lets errors.Is match the underlying kind sentinel, so callers can
+// test against apierr.Err* values through wrapped errors.
 func (e *Error) Unwrap() error { return underlying(e.Kind) }
 
 func underlying(k Kind) error {
@@ -91,6 +107,7 @@ func underlying(k Kind) error {
 }
 
 // KindOf extracts the kind carried by err (or KindInternal when unknown).
+// It walks the error chain so wrapped sentinels still map to their status.
 func KindOf(err error) Kind {
 	if err == nil {
 		return KindInternal

@@ -9,11 +9,12 @@ import (
 )
 
 // New returns an sms.Sender for the configured driver.
+// Unsupported drivers return an error; the log driver needs no credentials.
 func New(cfg config.SMSConfig) (sms.Sender, error) {
 	switch cfg.Driver {
-	case "log":
+	case config.DriverLog:
 		return NewLog(), nil
-	case "twilio":
+	case config.DriverTwilio:
 		return NewTwilio(cfg.From, cfg.Twilio)
 	default:
 		return nil, fmt.Errorf("unknown sms driver %q", cfg.Driver)

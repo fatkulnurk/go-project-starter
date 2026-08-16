@@ -11,6 +11,8 @@ import (
 )
 
 // RouterOptions configures the shared middleware chain.
+// Only the first element of a variadic call is used; an empty value applies
+// the safe defaults (same-origin only).
 type RouterOptions struct {
 	// CORSAllowedOrigins enables cross-origin access for these origins. Empty
 	// means same-origin only.
@@ -18,6 +20,8 @@ type RouterOptions struct {
 }
 
 // NewRouter builds a router with the standard middleware chain applied.
+// The chain is RequestID, Recoverer, Logger, AuditActor, SecurityHeaders,
+// CORS and a 30s request timeout; modules add their own routes on top.
 func NewRouter(opts ...RouterOptions) chi.Router {
 	o := RouterOptions{}
 	if len(opts) > 0 {

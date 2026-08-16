@@ -27,34 +27,39 @@ var files embed.FS
 // layout data so templates read {{.Common.AppName}} unchanged.
 type Common = mailer.Common
 
-// EmailVerificationData is the view model for email_verification.
+// EmailVerificationData is the view model for email_verification: the brand
+// common, the recipient's name and the numeric code.
 type EmailVerificationData struct {
 	Common
 	Name string
 	Code string
 }
 
-// EmailForgotPasswordData is the view model for email_forgot_password.
+// EmailForgotPasswordData is the view model for email_forgot_password: the
+// brand common, the recipient's name and the reset code.
 type EmailForgotPasswordData struct {
 	Common
 	Name string
 	Code string
 }
 
-// EmailMagicLinkData is the view model for email_magic_link.
+// EmailMagicLinkData is the view model for email_magic_link: the brand common,
+// the recipient's name and the one-time login link.
 type EmailMagicLinkData struct {
 	Common
 	Name string
 	Link string
 }
 
-// SMSVerificationData is the view model for sms_verification.
+// SMSVerificationData is the view model for sms_verification: the brand common
+// and the numeric code.
 type SMSVerificationData struct {
 	Common
 	Code string
 }
 
-// SMSForgotPasswordData is the view model for sms_forgot_password.
+// SMSForgotPasswordData is the view model for sms_forgot_password: the brand
+// common and the reset code.
 type SMSForgotPasswordData struct {
 	Common
 	Code string
@@ -103,7 +108,8 @@ func Email(name string, data any) (subject, text, html string, err error) {
 	return subject, text, buf.String(), nil
 }
 
-// SMS renders the body of the named SMS template (e.g. "sms_verification").
+// SMS renders the body of the named SMS template (e.g. "sms_verification")
+// from the shared text-template set. data is the matching view model.
 func SMS(name string, data any) (string, error) {
 	return branding.Render(textTmpl, name, data)
 }

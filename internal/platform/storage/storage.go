@@ -11,11 +11,12 @@ import (
 )
 
 // New returns a storage.Storage for the configured driver.
+// Driver "" is treated as "local"; unknown drivers return an error.
 func New(cfg config.StorageConfig) (storage.Storage, error) {
 	switch cfg.Driver {
-	case "s3":
+	case config.DriverS3:
 		return s3.NewS3(cfg.S3)
-	case "local", "":
+	case config.DriverLocal, "":
 		return local.NewLocal(cfg.Local), nil
 	default:
 		return nil, fmt.Errorf("unknown storage driver %q", cfg.Driver)

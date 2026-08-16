@@ -19,16 +19,20 @@ import (
 )
 
 // SSLType is the kind of TLS used on the SMTP connection.
+// It is produced by parseSSLType from the MAIL_SMTP_SSL config string.
 type SSLType uint8
 
 const (
 	// SSLNone opens a plain unencrypted connection.
+	// No TLS is negotiated, so credentials are sent as-is.
 	SSLNone SSLType = iota
 
 	// SSLTLS opens an SSL (TLS) connection directly without STARTTLS.
+	// This is the mode used by SMTP over TLS (typically port 465).
 	SSLTLS
 
 	// SSLSTARTTLS opens a plain connection then upgrades it via STARTTLS.
+	// This is the default mode and works on port 587.
 	SSLSTARTTLS
 )
 
@@ -40,6 +44,7 @@ const (
 
 var (
 	// ErrSMTPClosed is returned when the pool is closed.
+	// The borrow and return paths both observe this sentinel after Close().
 	ErrSMTPClosed = errors.New("smtp pool closed")
 )
 
@@ -80,6 +85,8 @@ type smtpConn struct {
 }
 
 // NewSMTP builds a pooled SMTP sender from cfg. from is the envelope sender.
+// It starts a background sweeper goroutine; the returned pool must be closed
+// with Close when the application shuts down.
 func NewSMTP(from, fromName string, cfg config.SMTPConfig) (*SMTP, error) {
 	if cfg.Host == "" {
 		return nil, errors.New("SMTP_HOST is required")
@@ -133,9 +140,17 @@ func parseSSLType(s string) (SSLType, error) {
 }
 
 // Send implements mailer.MailSender. On failure the message is retried on a
-// fresh connection when the error is retriable.
+// fresh connection when the error is retriable. Per-message From/FromName
+// override the driver defaults when set.
 func (s *SMTP) Send(ctx context.Context, msg mailer.Message) error {
-	data, err := buildMIME(s.from, s.fromName, msg)
+	from, fromName := s.from, s.fromName
+	if msg.From != "" {
+		from = msg.From
+	}
+	if msg.FromName != "" {
+		fromName = msg.FromName
+	}
+	data, err := buildMIME(from, fromName, msg)
 	if err != nil {
 		return err
 	}
@@ -155,7 +170,7 @@ func (s *SMTP) Send(ctx context.Context, msg mailer.Message) error {
 			return err
 		}
 
-		retry, err := s.sendOnConn(c, s.from, msg.To, data)
+		retry, err := s.sendOnConn(c, from, msg.To, data)
 		if err == nil {
 			_ = s.returnConn(c, nil)
 			return nil
@@ -169,12 +184,13 @@ func (s *SMTP) Send(ctx context.Context, msg mailer.Message) error {
 	return lastErr
 }
 
-// Close closes the pool. The background sweeper drains and quits on its next
-// pass; borrows in flight return ErrSMTPClosed.
-func (s *SMTP) Close() {
+// Close implements mailer.MailSender. The background sweeper drains and quits
+// on its next pass; borrows in flight return ErrSMTPClosed.
+func (s *SMTP) Close() error {
 	if s.closed.CompareAndSwap(false, true) {
 		close(s.stopBorrow)
 	}
+	return nil
 }
 
 // newConn dials, optionally upgrades to TLS/STARTTLS, and authenticates a

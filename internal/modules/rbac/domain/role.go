@@ -21,13 +21,13 @@ var (
 // Role is a named set of permissions assigned to users. Code is the stable
 // machine identifier checked by authorization; Name is the display label.
 type Role struct {
-	ID        string
-	Code      string
-	Name      string
-	CreatedAt int64
+	ID   string
+	Code string
+	Name string
 }
 
-// NewRole builds a role from its stable code and display name.
+// NewRole builds a role from its stable code and display name. It returns
+// ErrInvalid when either code or name is blank after trimming.
 func NewRole(code, name string) (*Role, error) {
 	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
 		return nil, ErrInvalid
@@ -46,7 +46,8 @@ type Permission struct {
 }
 
 // NewPermission builds a permission from its stable code, display group and
-// display name.
+// display name. It returns ErrInvalid when code or name is blank after
+// trimming; a blank group defaults to "General".
 func NewPermission(code, group, name string) (*Permission, error) {
 	if strings.TrimSpace(code) == "" || strings.TrimSpace(name) == "" {
 		return nil, ErrInvalid

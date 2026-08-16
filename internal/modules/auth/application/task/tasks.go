@@ -11,7 +11,8 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/application/queue"
 )
 
-// Task types.
+// Task types name the queue tasks the auth worker handles. Each payload type
+// below matches one of these names.
 const (
 	SendVerificationEmail   = "auth:send_verification_email"
 	SendPhoneVerification   = "auth:send_phone_verification"
@@ -56,27 +57,32 @@ type MagicLinkEmailPayload struct {
 	Email string `json:"email"`
 }
 
-// EnqueueVerificationEmail pushes a verification-email task.
+// EnqueueVerificationEmail pushes a verification-email task onto the queue
+// with up to five retries.
 func EnqueueVerificationEmail(ctx context.Context, e queue.Enqueuer, p VerificationEmailPayload) error {
 	return enqueue(ctx, e, SendVerificationEmail, p, 5)
 }
 
-// EnqueuePhoneVerification pushes a phone verification task.
+// EnqueuePhoneVerification pushes a phone verification task onto the queue
+// with up to five retries.
 func EnqueuePhoneVerification(ctx context.Context, e queue.Enqueuer, p PhoneVerificationPayload) error {
 	return enqueue(ctx, e, SendPhoneVerification, p, 5)
 }
 
-// EnqueueForgotPasswordEmail pushes a reset-code email task.
+// EnqueueForgotPasswordEmail pushes a reset-code email task onto the queue
+// with up to five retries.
 func EnqueueForgotPasswordEmail(ctx context.Context, e queue.Enqueuer, p ForgotPasswordEmailPayload) error {
 	return enqueue(ctx, e, SendForgotPasswordEmail, p, 5)
 }
 
-// EnqueueForgotPasswordSMS pushes a reset-code SMS task.
+// EnqueueForgotPasswordSMS pushes a reset-code SMS task onto the queue with
+// up to five retries.
 func EnqueueForgotPasswordSMS(ctx context.Context, e queue.Enqueuer, p ForgotPasswordSMSPayload) error {
 	return enqueue(ctx, e, SendForgotPasswordSMS, p, 5)
 }
 
-// EnqueueMagicLinkEmail pushes a magic link email task.
+// EnqueueMagicLinkEmail pushes a magic link email task onto the queue with up
+// to five retries.
 func EnqueueMagicLinkEmail(ctx context.Context, e queue.Enqueuer, p MagicLinkEmailPayload) error {
 	return enqueue(ctx, e, SendMagicLinkEmail, p, 5)
 }

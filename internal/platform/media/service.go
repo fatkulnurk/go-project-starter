@@ -21,7 +21,9 @@ type Deps struct {
 	Clock        clock.Clock
 }
 
-// Service implements appmedia.Library.
+// Service implements appmedia.Library. It orchestrates the storage driver and
+// the media repository, cleaning up orphaned objects when metadata writes
+// fail.
 type Service struct {
 	repo    mediaRepository
 	store   storage.Storage
@@ -31,7 +33,8 @@ type Service struct {
 	clock   clock.Clock
 }
 
-// New builds the media service.
+// New builds the media service. deps.Repo and deps.Storage are required;
+// deps.URLGenerator, deps.Auditor and deps.Clock may be left zero (nil).
 func New(deps Deps) *Service {
 	return &Service{
 		repo:    deps.Repo,
@@ -43,7 +46,11 @@ func New(deps Deps) *Service {
 	}
 }
 
-// AddMedia implements appmedia.Library.
+// AddMedia implements appmedia.Library. It writes in.Reader to the storage
+// driver under a generated object key, then persists the metadata record; on
+// any failure the already-stored object is deleted so no orphan is left
+// behind. It returns the created metadata, or appmedia.ErrInvalid for blank
+// model segments.
 func (s *Service) AddMedia(ctx context.Context, in appmedia.AddMediaInput) (*appmedia.Media, error) {
 	key, err := ObjectKey(in.ModelType, in.ModelID, in.Collection, in.Name)
 	if err != nil {
@@ -80,7 +87,9 @@ func (s *Service) AddMedia(ctx context.Context, in appmedia.AddMediaInput) (*app
 	return m, nil
 }
 
-// GetMedia implements appmedia.Library.
+// GetMedia implements appmedia.Library. It returns the metadata for id, or
+// appmedia.ErrNotFound when no such record exists; other repository errors are
+// propagated unchanged.
 func (s *Service) GetMedia(ctx context.Context, id string) (*appmedia.Media, error) {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -92,12 +101,17 @@ func (s *Service) GetMedia(ctx context.Context, id string) (*appmedia.Media, err
 	return m, nil
 }
 
-// ListByModel implements appmedia.Library.
+// ListByModel implements appmedia.Library. It returns the media attached to a
+// model, filtered by collection when collection is non-empty and ordered by
+// creation time. Repository errors are propagated unchanged.
 func (s *Service) ListByModel(ctx context.Context, modelType, modelID, collection string) ([]*appmedia.Media, error) {
 	return s.repo.ListByModel(ctx, modelType, modelID, collection)
 }
 
-// RemoveMedia implements appmedia.Library.
+// RemoveMedia implements appmedia.Library. It deletes the object from storage
+// and the metadata row, or returns appmedia.ErrNotFound when no such record
+// exists. A failed repository delete after a successful storage delete leaves
+// an orphaned object.
 func (s *Service) RemoveMedia(ctx context.Context, id string) error {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -124,7 +138,11 @@ func (s *Service) RemoveMedia(ctx context.Context, id string) error {
 	return nil
 }
 
-// URL implements appmedia.Library.
+// URL implements appmedia.Library. It resolves the media's storage key through
+// the configured URL generator and returns the public URL. It returns
+// appmedia.ErrNoURL when no generator is configured, when the driver cannot
+// expose a URL, or when the generator yields an empty string, and
+// appmedia.ErrNotFound when no such record exists.
 func (s *Service) URL(ctx context.Context, id string) (string, error) {
 	if s.urlGen == nil {
 		return "", appmedia.ErrNoURL

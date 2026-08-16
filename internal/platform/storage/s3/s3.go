@@ -19,6 +19,7 @@ import (
 )
 
 // S3 is an S3/S3-compatible object store.
+// Operations run on a single bucket with a bounded per-call timeout.
 type S3 struct {
 	client *s3.Client
 	bucket string
@@ -27,6 +28,8 @@ type S3 struct {
 const opTimeout = 30 * time.Second
 
 // NewS3 builds a client from config. Empty endpoint means real AWS.
+// It returns an error when the bucket is missing or the AWS config cannot be
+// loaded; empty credentials fall back to the default credential chain.
 func NewS3(cfg config.S3Config) (*S3, error) {
 	if cfg.Bucket == "" {
 		return nil, errors.New("STORAGE_S3_BUCKET is required")
@@ -59,6 +62,8 @@ func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 }
 
 // Put implements storage.Storage.
+// It uploads r to the configured bucket, returning the PutObject error, if
+// any, after a 30s timeout.
 func (s *S3) Put(ctx context.Context, key string, r io.Reader) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -71,6 +76,8 @@ func (s *S3) Put(ctx context.Context, key string, r io.Reader) error {
 }
 
 // Get implements storage.Storage.
+// A missing key maps to storage.ErrNotFound; the returned body is owned by
+// the caller and must be closed.
 func (s *S3) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -85,6 +92,7 @@ func (s *S3) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 }
 
 // Delete implements storage.Storage.
+// S3 deletes are idempotent: removing a missing key is not an error.
 func (s *S3) Delete(ctx context.Context, key string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -96,6 +104,8 @@ func (s *S3) Delete(ctx context.Context, key string) error {
 }
 
 // Attributes implements storage.Storage.
+// It HEADs the object and reports its size; missing keys map to
+// storage.ErrNotFound.
 func (s *S3) Attributes(ctx context.Context, key string) (storage.ObjectAttrs, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -114,6 +124,8 @@ func (s *S3) Attributes(ctx context.Context, key string) (storage.ObjectAttrs, e
 }
 
 // Presign implements storage.Presigner.
+// It returns a time-limited URL that lets an unauthenticated client GET the
+// object until it expires (default signing lifetime).
 func (s *S3) Presign(ctx context.Context, key string) (string, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()

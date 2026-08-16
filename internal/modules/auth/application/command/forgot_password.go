@@ -11,6 +11,7 @@ import (
 )
 
 // ForgotPasswordCommand requests a password-reset code for an email or phone.
+// Identifier accepts either; the delivery channel is chosen from it.
 type ForgotPasswordCommand struct {
 	Identifier string
 	IP         string
@@ -27,20 +28,25 @@ type ForgotPasswordResult struct {
 // uniform success. The worker resolves the identifier to a user and skips the
 // send when the account does not exist.
 type ForgotPassword struct {
-	enqueuer queue.Enqueuer
-	otpTTL   time.Duration
-	limiter  *rateLimiter
+	enqueuer    queue.Enqueuer
+	otpTTL      time.Duration
+	limiter     *rateLimiter
+	countryCode string
 }
 
-// NewForgotPassword builds the use case.
-func NewForgotPassword(enqueuer queue.Enqueuer, otpTTL time.Duration, limiter *rateLimiter) *ForgotPassword {
-	return &ForgotPassword{enqueuer: enqueuer, otpTTL: otpTTL, limiter: limiter}
+// NewForgotPassword builds the forgot-password use case from the enqueuer,
+// the reset-code TTL, the rate limiter and the default country code.
+func NewForgotPassword(enqueuer queue.Enqueuer, otpTTL time.Duration, limiter *rateLimiter, countryCode string) *ForgotPassword {
+	return &ForgotPassword{enqueuer: enqueuer, otpTTL: otpTTL, limiter: limiter, countryCode: countryCode}
 }
 
-// Execute runs the use case.
+// Execute normalizes the identifier, rate-checks the request, and enqueues a
+// reset-code delivery task. It always returns a uniform success (ErrInvalid
+// only for malformed identifiers) so registration status is never revealed;
+// the worker resolves and skips unknown accounts.
 func (uc *ForgotPassword) Execute(ctx context.Context, cmd ForgotPasswordCommand) (*ForgotPasswordResult, error) {
-	identifier := strings.ToLower(strings.TrimSpace(cmd.Identifier))
-	if identifier == "" {
+	identifier, err := normalizeIdentifier(cmd.Identifier, uc.countryCode)
+	if err != nil {
 		return nil, domain.ErrInvalid
 	}
 	if uc.limiter != nil {

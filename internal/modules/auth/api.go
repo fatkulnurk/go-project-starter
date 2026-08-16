@@ -19,6 +19,12 @@ type API struct {
 	Refresh          *command.Refresh
 	Logout           *command.Logout
 	UpdateProfile    *command.UpdateProfile
+	ChangePassword   *command.ChangePassword
+	SetupTOTP        *command.SetupTOTP
+	ConfirmTOTP      *command.ConfirmTOTP
+	DisableTOTP      *command.DisableTOTP
+	VerifyMFA        *command.VerifyMFA
+	SessionRevoke    *command.SessionRevoke
 	Profile          *query.Profile
-	FindUserByEmail  *query.FindUserByEmail
+	Sessions         *query.Sessions
 }

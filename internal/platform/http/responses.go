@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/apierr"
@@ -28,16 +29,21 @@ type errorBody struct {
 }
 
 // WriteSuccess renders a success envelope with the given status.
+// data is marshaled under the "data" key; callers should pass structs or
+// maps that serialize cleanly to JSON.
 func WriteSuccess(w http.ResponseWriter, status int, data any) {
 	WriteJSON(w, status, dataEnvelope{Data: data})
 }
 
 // WriteSuccessMessage renders a success envelope carrying a plain message.
+// The message is wrapped as {"data": {"message": ...}} via WriteSuccess.
 func WriteSuccessMessage(w http.ResponseWriter, status int, message string) {
 	WriteSuccess(w, status, map[string]string{"message": message})
 }
 
 // WriteError renders an error envelope with an explicit status and code.
+// The payload is {"error": {"code", "message"}}; the caller picks the HTTP
+// status and a stable machine-readable code.
 func WriteError(w http.ResponseWriter, status int, code, message string) {
 	WriteJSON(w, status, errorEnvelope{Error: errorBody{Code: code, Message: message}})
 }
@@ -77,15 +83,22 @@ const maxBodyBytes = 1 << 20 // 1 MiB
 
 // DecodeJSON parses the request body into v, returning apierr.ErrInvalid on
 // malformed input and apierr.ErrPayloadTooLarge when the body exceeds
-// maxBodyBytes, so callers can map them with WriteMappedError.
+// maxBodyBytes, so callers can map them with WriteMappedError. Trailing data
+// after the single JSON value is rejected, and the body is drained so the
+// connection can be reused.
 func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(v); err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
 			return apierr.ErrPayloadTooLarge
 		}
 		return apierr.ErrInvalid
 	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return apierr.ErrInvalid
+	}
+	_, _ = io.Copy(io.Discard, r.Body)
 	return nil
 }

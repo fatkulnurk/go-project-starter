@@ -4,7 +4,8 @@
 // of external libraries.
 package id
 
-// Generator produces unique identifiers.
+// Generator produces unique identifiers. The implementation (UUID v7, snowflake,
+// ...) is chosen once in the composition root via SetDefault.
 type Generator interface {
 	// New returns a version-7 UUID string. UUID v7 is time-ordered so rows sort
 	// naturally by insertion time, which keeps indexes friendly.
@@ -24,5 +25,6 @@ func New() string {
 	return defaultGen.New()
 }
 
-// SetDefault installs the generator used by New. Call it once during startup.
+// SetDefault installs the generator used by New. Call it once during startup,
+// before any identifiers are minted; wiring it late panics on the first New.
 func SetDefault(g Generator) { defaultGen = g }

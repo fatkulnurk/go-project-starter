@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 )
 
 // SecurityHeaders sets safe-by-default response headers on every request.
@@ -17,6 +18,19 @@ func SecurityHeaders() func(http.Handler) http.Handler {
 			h.Set("Content-Security-Policy", "default-src 'self'")
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// appendVary adds value to the Vary header without clobbering values other
+// middleware already set, so caches never serve the wrong variant.
+func appendVary(h http.Header, value string) {
+	existing := h.Get("Vary")
+	if existing == "" {
+		h.Set("Vary", value)
+		return
+	}
+	if !strings.Contains(existing, value) {
+		h.Set("Vary", existing+", "+value)
 	}
 }
 
@@ -40,7 +54,7 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			h := w.Header()
 			if origin != "" && allow[origin] {
 				h.Set("Access-Control-Allow-Origin", origin)
-				h.Set("Vary", "Origin")
+				appendVary(h, "Origin")
 				h.Set("Access-Control-Allow-Credentials", "true")
 			}
 			if r.Method == http.MethodOptions {

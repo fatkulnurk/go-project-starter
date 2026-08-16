@@ -10,18 +10,20 @@ import (
 // ErrForbidden is returned by HasPermission when the identity is not allowed.
 var ErrForbidden = errors.New("forbidden")
 
-// ErrAuthorizationDenied is an alias kept for readability at call sites.
-var ErrAuthorizationDenied = ErrForbidden
-
-// Authorizer answers "are you allowed to do this?".
+// Authorizer answers "are you allowed to do this?". The RBAC module implements
+// it; protected routes receive it via middleware.
 type Authorizer interface {
-	// HasPermission checks whether identity holds the given permission.
+	// HasPermission checks whether identity holds the given permission. It
+	// returns nil when allowed and ErrForbidden when not.
 	HasPermission(ctx context.Context, identity Identity, permission string) error
-	// HasRole checks whether identity holds the given role.
+
+	// HasRole checks whether identity holds the given role. It returns nil
+	// when allowed and ErrForbidden when not.
 	HasRole(ctx context.Context, identity Identity, role string) error
 }
 
-// Identity is the minimal caller description needed for authorization.
+// Identity is the minimal caller description needed for authorization: their
+// user id and the roles asserted at authentication time.
 type Identity struct {
 	UserID string
 	Roles  []string

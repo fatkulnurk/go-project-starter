@@ -7,24 +7,31 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth/domain"
 )
 
-// RefreshCommand rotates a refresh token into a fresh credential pair.
+// RefreshCommand rotates a refresh token into a fresh credential pair. The
+// refresh token is the raw value issued at login or at the last rotation.
 type RefreshCommand struct {
 	RefreshToken string
 }
 
-// Refresh rotates a valid refresh token.
+// Refresh rotates a valid refresh token within its session family, revoking
+// the presented token as part of the exchange.
 type Refresh struct {
 	refreshTokens domain.RefreshTokenRepository
 	users         domain.UserRepository
 	issuer        *TokenIssuer
+	denylist      *jtiDenylist
 }
 
-// NewRefresh builds the use case.
-func NewRefresh(refreshTokens domain.RefreshTokenRepository, users domain.UserRepository, issuer *TokenIssuer) *Refresh {
-	return &Refresh{refreshTokens: refreshTokens, users: users, issuer: issuer}
+// NewRefresh builds the refresh use case from the token and user repositories,
+// the shared issuer and the denylist.
+func NewRefresh(refreshTokens domain.RefreshTokenRepository, users domain.UserRepository, issuer *TokenIssuer, denylist *jtiDenylist) *Refresh {
+	return &Refresh{refreshTokens: refreshTokens, users: users, issuer: issuer, denylist: denylist}
 }
 
-// Execute runs the use case.
+// Execute rotates a refresh token into a fresh credential pair within the same
+// session family. It returns ErrUnauthorized for unknown, expired, or reused
+// tokens; a reused (already rotated) token revokes the whole family as a theft
+// signal. The rotation itself is atomic against concurrent requests.
 func (uc *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (*TokenResult, error) {
 	raw := strings.TrimSpace(cmd.RefreshToken)
 	if raw == "" {
@@ -34,7 +41,16 @@ func (uc *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (*TokenResul
 	if err != nil {
 		return nil, err
 	}
-	if t == nil || t.IsRevoked() || t.IsExpired(nowUTC()) {
+	if t == nil {
+		return nil, domain.ErrUnauthorized
+	}
+	if t.IsRevoked() {
+		// Reuse of an already-rotated credential means the token was stolen:
+		// revoke the whole session family and its outstanding access tokens.
+		uc.revokeFamily(ctx, t.FamilyID)
+		return nil, domain.ErrUnauthorized
+	}
+	if t.IsExpired(nowUTC()) {
 		return nil, domain.ErrUnauthorized
 	}
 	user, err := uc.users.FindByID(ctx, t.UserID)
@@ -52,7 +68,25 @@ func (uc *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (*TokenResul
 		return nil, err
 	}
 	if !active {
+		uc.revokeFamily(ctx, t.FamilyID)
 		return nil, domain.ErrUnauthorized
 	}
-	return uc.issuer.Issue(ctx, user.ID)
+	// Continue the same session family so the session count is unchanged.
+	return uc.issuer.IssueInFamily(ctx, user.ID, t.FamilyID)
+}
+
+// revokeFamily revokes every refresh token of a session family and denies its
+// outstanding access tokens. Revocation errors are swallowed: the operation is
+// best-effort and can be retried.
+func (uc *Refresh) revokeFamily(ctx context.Context, familyID string) {
+	if familyID == "" {
+		return
+	}
+	if jtis, err := uc.refreshTokens.JtisByFamily(ctx, familyID); err == nil {
+		uc.denylist.deny(ctx, jtis)
+	}
+	if err := uc.refreshTokens.RevokeFamily(ctx, familyID); err != nil {
+		// The family stays partially revoked on retry; nothing else to do.
+		return
+	}
 }

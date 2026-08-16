@@ -38,6 +38,7 @@ func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 type loginRequest struct {
 	Identifier string `json:"identifier"`
 	Password   string `json:"password"`
+	Code       string `json:"code"` // optional MFA second factor
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -48,10 +49,26 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	res, err := h.deps.Login.Execute(r.Context(), command.LoginCommand{
 		Identifier: req.Identifier,
 		Password:   req.Password,
+		Code:       req.Code,
 		IP:         clientIP(r),
 	})
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	h.writeLoginResult(w, res)
+}
+
+// writeLoginResult renders a successful login: either the credential pair or,
+// when the account requires a second factor, a one-time MFA challenge that the
+// client completes via /mfa/verify.
+func (h *handler) writeLoginResult(w http.ResponseWriter, res *command.LoginResult) {
+	if res.MFAChallenge != "" {
+		writeSuccess(w, http.StatusOK, map[string]any{
+			responseMFARequired: true,
+			responseChallenge:   res.MFAChallenge,
+			responseUser:        toUserResponse(res.User),
+		})
 		return
 	}
 	writeSuccess(w, http.StatusOK, toTokenResponse(res.AccessToken, res.RefreshToken, res.ExpiresIn, res.User))

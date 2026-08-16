@@ -1,4 +1,5 @@
-// Package queries contains read-side use cases of the auth module.
+// Package queries contains the read-side use cases of the auth module. The
+// queries return read models built from the domain repositories.
 package query
 
 import (
@@ -16,18 +17,21 @@ type ProfileResult struct {
 	Permissions []string
 }
 
-// Profile returns the profile of a user including RBAC data.
+// Profile returns the profile of a user including their RBAC roles and
+// permissions, resolved through the optional Roles port.
 type Profile struct {
 	users domain.UserRepository
 	roles port.Roles
 }
 
-// NewProfile builds the use case. roles may be nil when RBAC is not wired.
+// NewProfile builds the profile use case. roles may be nil when RBAC is not
+// wired; the returned profile then carries no roles or permissions.
 func NewProfile(users domain.UserRepository, roles port.Roles) *Profile {
 	return &Profile{users: users, roles: roles}
 }
 
-// Execute runs the use case.
+// Execute returns the user's profile together with RBAC data. It returns
+// ErrNotFound when the user does not exist and passes through RBAC errors.
 func (q *Profile) Execute(ctx context.Context, userID string) (*ProfileResult, error) {
 	user, err := q.users.FindByID(ctx, userID)
 	if err != nil {

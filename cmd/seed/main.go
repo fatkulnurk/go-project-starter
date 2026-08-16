@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 
@@ -31,6 +32,16 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/logger"
 )
 
+// force reports whether --force was passed, overriding the production guard.
+func force() bool {
+	for _, a := range os.Args[1:] {
+		if a == "--force" {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("seed", "err", err)
@@ -43,6 +54,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if cfg.Environment == config.EnvironmentProduction && !force() {
+		return errors.New("refusing to seed demo data in production; pass --force to override")
+	}
 	slog.SetDefault(logger.New(cfg.Environment))
 	appid.SetDefault(platformid.Generator{})
 
@@ -53,7 +67,7 @@ func run() error {
 	defer db.Close()
 
 	clk := clock.Real{Loc: cfg.Location()}
-	hasher := hash.NewHash(0)
+	hasher := hash.NewBCrypt(0)
 
 	// --- DatabaseSeeder: register every module seeder --------------------
 	reg := seed.New()
@@ -68,8 +82,15 @@ func run() error {
 	})
 
 	ctx := context.Background()
-	if len(os.Args) > 1 {
-		return reg.RunOnly(ctx, os.Args[1:]...)
+	args := make([]string, 0, len(os.Args)-1)
+	for _, a := range os.Args[1:] {
+		if a == "--force" {
+			continue
+		}
+		args = append(args, a)
+	}
+	if len(args) > 0 {
+		return reg.RunOnly(ctx, args...)
 	}
 	return reg.Run(ctx)
 }
@@ -81,6 +102,8 @@ type roleAssigner struct {
 	rbacModule *rbac.Module
 }
 
+// AssignRole implements the auth seeder's Roles port by delegating to the
+// RBAC service, so demo users can be granted roles during seeding.
 func (a roleAssigner) AssignRole(ctx context.Context, userID, roleName string) error {
 	return a.rbacModule.Service().AssignRole(ctx, userID, roleName)
 }

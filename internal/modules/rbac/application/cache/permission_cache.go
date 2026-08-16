@@ -6,6 +6,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	appcache "github.com/fatkulnurk/go-project-starter/internal/application/cache"
@@ -17,24 +18,29 @@ const (
 )
 
 // PermissionCache stores and invalidates role/permission data in the shared
-// cache (redis/memory).
+// cache (redis/memory). A single global version counter tags every user entry;
+// bumping the version invalidates all entries at once.
 type PermissionCache struct {
 	c   appcache.Cache
 	ttl time.Duration
 }
 
-// NewPermissionCache builds a permission cache.
+// NewPermissionCache builds a permission cache. The ttl bounds how long user
+// entries live; it is applied to every SetUser write.
 func NewPermissionCache(c appcache.Cache, ttl time.Duration) *PermissionCache {
 	return &PermissionCache{c: c, ttl: ttl}
 }
 
 // Bump increments the global version, invalidating all cached user entries.
+// It returns an error when the underlying cache increment fails.
 func (pc *PermissionCache) Bump(ctx context.Context) error {
 	_, err := pc.c.Increment(ctx, versionKey, 1)
 	return err
 }
 
-// CurrentVersion returns the current version (0 when never bumped).
+// CurrentVersion returns the current version (0 when never bumped). It is the
+// version to which new user entries must be written and against which reads
+// are compared; errors from the underlying cache are propagated.
 func (pc *PermissionCache) CurrentVersion(ctx context.Context) (int64, error) {
 	b, err := pc.c.Get(ctx, versionKey)
 	if err == appcache.ErrNotFound {
@@ -43,11 +49,9 @@ func (pc *PermissionCache) CurrentVersion(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var v int64
-	if err := json.Unmarshal(b, &v); err != nil {
-		return 0, err
-	}
-	return v, nil
+	// The version is written by Increment (an integer string); parse it
+	// directly instead of round-tripping through JSON.
+	return strconv.ParseInt(string(b), 10, 64)
 }
 
 // userEntry is what is stored per user.
@@ -77,7 +81,9 @@ func (pc *PermissionCache) GetUser(ctx context.Context, userID string, ver int64
 	return e.Roles, e.Permissions, true, nil
 }
 
-// SetUser caches roles/permissions for userID at version ver.
+// SetUser caches roles/permissions for userID at version ver. A stale entry
+// under a different version is simply ignored by GetUser; a failed write is
+// harmless (just a wasted lookup).
 func (pc *PermissionCache) SetUser(ctx context.Context, userID string, ver int64, roles, permissions []string) error {
 	b, err := json.Marshal(userEntry{Version: ver, Roles: roles, Permissions: permissions})
 	if err != nil {

@@ -116,5 +116,9 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     CONSTRAINT fk_up_permission FOREIGN KEY (permission_id) REFERENCES permissions (id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_user_roles_user ON user_roles (user_id);
-CREATE INDEX idx_user_permissions_user ON user_permissions (user_id);
+-- Reverse-lookup indexes on the many-to-many joins. The composite primary
+-- keys already cover lookups by their leftmost column (role_id / user_id), so
+-- only the right-hand columns need explicit indexes; the user_roles_user and
+-- user_permissions_user indexes are redundant prefixes of the PKs and omitted.
+CREATE INDEX idx_role_permissions_permission ON role_permissions (permission_id);
+CREATE INDEX idx_user_roles_role ON user_roles (role_id);

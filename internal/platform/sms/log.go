@@ -12,9 +12,11 @@ import (
 type Log struct{}
 
 // NewLog builds a logging SMS sender.
+// It needs no configuration and is the default dev driver.
 func NewLog() *Log { return &Log{} }
 
 // Send implements sms.Sender.
+// It logs the recipient and body and always returns nil — nothing is sent.
 func (l *Log) Send(_ context.Context, msg sms.Message) error {
 	slog.Info("sms.send",
 		"to", msg.To,

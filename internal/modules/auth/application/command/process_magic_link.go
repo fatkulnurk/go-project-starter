@@ -29,7 +29,8 @@ type ProcessMagicLink struct {
 	clock    clock.Clock
 }
 
-// NewProcessMagicLink builds the use case.
+// NewProcessMagicLink builds the worker-side magic-link use case from the user
+// and code repositories, the base URL and the link TTL.
 func NewProcessMagicLink(users domain.UserRepository, codes domain.VerificationCodeRepository, baseURL string, magicTTL time.Duration, clk clock.Clock) *ProcessMagicLink {
 	return &ProcessMagicLink{users: users, codes: codes, baseURL: baseURL, magicTTL: magicTTL, clock: clk}
 }
@@ -37,6 +38,10 @@ func NewProcessMagicLink(users domain.UserRepository, codes domain.VerificationC
 // Execute resolves email to a user and, when found, issues a magic link. A nil
 // User in the result means the email is not registered: skip.
 func (uc *ProcessMagicLink) Execute(ctx context.Context, email string) (*ProcessMagicLinkResult, error) {
+	email, err := domain.NormalizeEmail(email)
+	if err != nil {
+		return &ProcessMagicLinkResult{}, nil
+	}
 	user, err := uc.users.FindByEmail(ctx, email)
 	if err != nil {
 		return nil, err

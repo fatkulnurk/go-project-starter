@@ -13,7 +13,8 @@ import (
 	"time"
 )
 
-// Environment names.
+// Environment names. Only these values pass validation for APP_ENV. The
+// default for a missing APP_ENV is EnvironmentDevelopment.
 const (
 	EnvironmentDevelopment = "development"
 	EnvironmentProduction  = "production"
@@ -36,7 +37,8 @@ const (
 	DriverAsynq    = "asynq"
 )
 
-// Environment variable keys.
+// Environment variable keys. Each maps directly to a field in Config and is
+// read through the builder helpers below.
 const (
 	envAppEnv      = "APP_ENV"
 	envAppPort     = "APP_PORT"
@@ -115,6 +117,8 @@ const (
 	envRateLimitLoginWindow     = "RATE_LIMIT_LOGIN_WINDOW"
 	envRateLimitPublicMax       = "RATE_LIMIT_PUBLIC_MAX"
 	envRateLimitPublicWindow    = "RATE_LIMIT_PUBLIC_WINDOW"
+	envDefaultCountryCode       = "AUTH_DEFAULT_COUNTRY_CODE"
+	envMaxActiveSessions        = "AUTH_MAX_SESSIONS"
 
 	envRBACCacheTTL = "RBAC_CACHE_TTL"
 
@@ -169,7 +173,7 @@ const (
 	defaultSMTPSSL               = "starttls"
 	defaultSESRegion             = "us-east-1"
 	defaultSMSDriver             = DriverLog
-	defaultJWTSecret             = "change-me-in-production"
+	defaultJWTSecret             = "change-me-in-production-go-project-starter"
 	defaultJWTIssuer             = "go-project-starter"
 	defaultJWTAudience           = "go-project-starter-api"
 	defaultAccessTokenTTL        = 15 * time.Minute
@@ -185,9 +189,11 @@ const (
 	defaultRBACCacheTTL          = 5 * time.Minute
 	defaultMediaMaxUploadSize    = 10 << 20 // 10 MiB
 	defaultPublicDir             = "./public"
+	defaultMaxActiveSessions     = 10
 )
 
 // Config is the union of all settings needed by every binary.
+// It is produced by Load and validated before any service is constructed.
 type Config struct {
 	Environment string
 	Port        int
@@ -224,11 +230,13 @@ type Config struct {
 }
 
 // MediaConfig holds upload constraints.
+// MaxUploadSize caps the size of a single upload in bytes.
 type MediaConfig struct {
 	MaxUploadSize int64
 }
 
 // RBACConfig holds role/permission caching settings.
+// PermissionCacheTTL controls how long cached permissions stay valid.
 type RBACConfig struct {
 	PermissionCacheTTL time.Duration
 }
@@ -278,12 +286,16 @@ func (c Config) AssetsBaseURLOrDefault() string {
 }
 
 // CacheConfig selects the cache driver.
+// Driver is one of "redis", "memory" or "db"; Redis holds the connection
+// settings used when the driver is "redis".
 type CacheConfig struct {
 	Driver string
 	Redis  RedisConfig
 }
 
 // RedisConfig holds go-redis connection settings.
+// PoolSize bounds concurrent connections; the timeouts bound dial, read and
+// write operations.
 type RedisConfig struct {
 	Addr         string
 	Password     string
@@ -308,6 +320,7 @@ type QueueConfig struct {
 }
 
 // StorageConfig selects the storage driver.
+// Driver is one of "local" or "s3"; Local and S3 hold the per-driver settings.
 type StorageConfig struct {
 	Driver string
 	Local  LocalStorageConfig
@@ -315,11 +328,14 @@ type StorageConfig struct {
 }
 
 // LocalStorageConfig points at the root directory for the local driver.
+// Dir is the filesystem root under which object keys are resolved.
 type LocalStorageConfig struct {
 	Dir string
 }
 
 // S3Config holds AWS S3 / S3-compatible settings.
+// Endpoint is optional (empty means real AWS); UsePathStyle enables the
+// virtual-host workaround needed by MinIO-style services.
 type S3Config struct {
 	Endpoint     string
 	Region       string
@@ -330,6 +346,8 @@ type S3Config struct {
 }
 
 // MailConfig selects the mail driver.
+// Driver is one of "log", "smtp" or "ses"; From/FromName are the default
+// sender, and SMTP/SES hold the per-driver settings.
 type MailConfig struct {
 	Driver   string
 	From     string
@@ -339,6 +357,7 @@ type MailConfig struct {
 }
 
 // SMTPConfig holds plain SMTP settings.
+// PoolSize bounds concurrent connections; SSL is "none", "tls" or "starttls".
 type SMTPConfig struct {
 	Host     string
 	Port     int
@@ -350,6 +369,7 @@ type SMTPConfig struct {
 }
 
 // SESConfig holds Amazon SES (SESv2) settings.
+// Credentials fall back to the default AWS credential chain when empty.
 type SESConfig struct {
 	Region    string
 	AccessKey string
@@ -357,6 +377,8 @@ type SESConfig struct {
 }
 
 // SMSConfig selects the SMS driver.
+// Driver is one of "log" or "twilio"; From is the default sender number and
+// Twilio holds the per-driver credentials.
 type SMSConfig struct {
 	Driver string
 	From   string
@@ -364,6 +386,8 @@ type SMSConfig struct {
 }
 
 // TwilioConfig holds Twilio settings.
+// AccountSID and AuthToken authenticate the API; MessagingSID opts into a
+// messaging service and takes precedence over the From number.
 type TwilioConfig struct {
 	AccountSID   string
 	AuthToken    string
@@ -371,6 +395,8 @@ type TwilioConfig struct {
 }
 
 // AuthConfig holds token, verification and rate-limit settings.
+// JWTSecret signs and verifies tokens; the TTLs bound access and refresh
+// tokens, and the rate-limit fields throttle login and public endpoints.
 type AuthConfig struct {
 	JWTSecret             string
 	JWTIssuer             string
@@ -386,6 +412,11 @@ type AuthConfig struct {
 	RateLimitLoginWindow  time.Duration
 	RateLimitPublicMax    int64
 	RateLimitPublicWindow time.Duration
+	// DefaultCountryCode expands local phone numbers (leading 0) into E.164
+	// during normalization, e.g. "62". Empty keeps "+" numbers unchanged.
+	DefaultCountryCode string
+	// MaxActiveSessions caps concurrent refresh-token families per user.
+	MaxActiveSessions int
 }
 
 // builder accumulates env values and reports any parse failures.
@@ -561,6 +592,8 @@ func Load() (Config, error) {
 			RateLimitLoginWindow:  b.duration(envRateLimitLoginWindow, defaultRateLimitWindow),
 			RateLimitPublicMax:    b.int64(envRateLimitPublicMax, defaultRateLimitPublicMax),
 			RateLimitPublicWindow: b.duration(envRateLimitPublicWindow, defaultRateLimitPublicWindow),
+			DefaultCountryCode:    b.str(envDefaultCountryCode, ""),
+			MaxActiveSessions:     b.int(envMaxActiveSessions, defaultMaxActiveSessions),
 		},
 		RBAC: RBACConfig{
 			PermissionCacheTTL: b.duration(envRBACCacheTTL, defaultRBACCacheTTL),
@@ -697,11 +730,11 @@ func (c Config) validate() []string {
 	if c.Auth.JWTSecret == "" {
 		errs = append(errs, "AUTH_JWT_SECRET must not be empty")
 	}
+	if len(c.Auth.JWTSecret) < 32 {
+		errs = append(errs, "AUTH_JWT_SECRET must be at least 32 characters")
+	}
 	if c.Auth.JWTSecret == defaultJWTSecret && c.Environment == EnvironmentProduction {
 		errs = append(errs, "AUTH_JWT_SECRET must be changed from the default in production")
-	}
-	if c.Auth.JWTSecret != defaultJWTSecret && len(c.Auth.JWTSecret) < 32 {
-		errs = append(errs, "AUTH_JWT_SECRET should be at least 32 characters")
 	}
 	if c.Auth.JWTIssuer == "" || c.Auth.JWTAudience == "" {
 		errs = append(errs, "AUTH_JWT_ISSUER and AUTH_JWT_AUDIENCE must not be empty")
@@ -726,6 +759,9 @@ func (c Config) validate() []string {
 	}
 	if c.Auth.RateLimitPublicMax < 1 || c.Auth.RateLimitPublicWindow <= 0 {
 		errs = append(errs, "RATE_LIMIT_PUBLIC_MAX / RATE_LIMIT_PUBLIC_WINDOW must be positive")
+	}
+	if c.Auth.MaxActiveSessions < 1 {
+		errs = append(errs, "AUTH_MAX_SESSIONS must be >= 1")
 	}
 
 	if c.RBAC.PermissionCacheTTL <= 0 {

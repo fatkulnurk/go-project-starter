@@ -7,7 +7,8 @@ import (
 	platformhttp "github.com/fatkulnurk/go-project-starter/internal/platform/http"
 )
 
-// welcome renders the landing page for GET /.
+// welcome renders the landing page for GET /, writing the generated HTML with
+// an HTML content type. Rendering errors map to the shared error envelope.
 func (h *handler) welcome(w http.ResponseWriter, _ *http.Request) {
 	html, err := template.RenderWelcome(template.WelcomeData{Common: h.deps.Common})
 	if err != nil {

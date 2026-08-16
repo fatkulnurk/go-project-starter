@@ -8,13 +8,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Deps bundles what the handlers need.
+// Deps bundles what the handlers need. Info is the branding returned by the
+// public endpoint.
 type Deps struct {
 	// Info carries the branding exposed by GET /.
 	Info application.Info
 }
 
-// RegisterRoutes mounts the homepage JSON API at the root.
+// RegisterRoutes mounts the homepage JSON API at the root, answering GET / with
+// the branding info.
 func RegisterRoutes(r chi.Router, deps Deps) {
 	h := &handler{deps: deps}
 	r.Get("/", h.info)

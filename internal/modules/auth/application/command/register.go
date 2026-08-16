@@ -13,7 +13,8 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
 )
 
-// RegisterCommand is the input for user registration.
+// RegisterCommand is the input for user registration: name, optional contacts
+// (at least one of email/phone required) and a password of at least 8 chars.
 type RegisterCommand struct {
 	Name     string
 	Email    string
@@ -29,7 +30,8 @@ type RegisterResult struct {
 	DevPhoneCode string
 }
 
-// Register creates a user and issues verification codes.
+// Register creates a user, assigns the default role, and issues verification
+// codes for the provided contact channels.
 type Register struct {
 	users          domain.UserRepository
 	codes          domain.VerificationCodeRepository
@@ -42,19 +44,32 @@ type Register struct {
 	otpTTL         time.Duration
 	otpMaxAttempts int
 	devMode        bool
+	// countryCode expands local phone numbers (leading 0) into E.164.
+	countryCode string
 }
 
 // NewRegister builds the register use case. roles may be nil when RBAC is not
 // wired; the user is then created without any role.
-func NewRegister(users domain.UserRepository, codes domain.VerificationCodeRepository, hasher hash.PasswordHasher, enqueuer queue.Enqueuer, roles port.Roles, auditor audit.Recorder, clk clock.Clock, otpLength int, otpTTL time.Duration, otpMaxAttempts int, devMode bool) *Register {
-	return &Register{users: users, codes: codes, hasher: hasher, enqueuer: enqueuer, roles: roles, auditor: auditor, clock: clk, otpLength: otpLength, otpTTL: otpTTL, otpMaxAttempts: otpMaxAttempts, devMode: devMode}
+func NewRegister(users domain.UserRepository, codes domain.VerificationCodeRepository, hasher hash.PasswordHasher, enqueuer queue.Enqueuer, roles port.Roles, auditor audit.Recorder, clk clock.Clock, otpLength int, otpTTL time.Duration, otpMaxAttempts int, devMode bool, countryCode string) *Register {
+	return &Register{users: users, codes: codes, hasher: hasher, enqueuer: enqueuer, roles: roles, auditor: auditor, clock: clk, otpLength: otpLength, otpTTL: otpTTL, otpMaxAttempts: otpMaxAttempts, devMode: devMode, countryCode: countryCode}
 }
 
-// Execute runs the use case.
+// Execute validates the input, creates the user, assigns the default role, and
+// issues verification codes for the provided contacts. It returns ErrInvalid
+// for weak or incomplete input, ErrConflict when the email or phone is already
+// registered, and passes through repository and enqueue failures. Codes are
+// echoed back only in dev mode.
 func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*RegisterResult, error) {
 	cmd.Name = strings.TrimSpace(cmd.Name)
-	cmd.Email = strings.ToLower(strings.TrimSpace(cmd.Email))
-	cmd.Phone = strings.TrimSpace(cmd.Phone)
+	var err error
+	cmd.Email, err = normalizeEmailOptional(cmd.Email)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Phone, err = normalizePhoneOptional(cmd.Phone, uc.countryCode)
+	if err != nil {
+		return nil, err
+	}
 	if cmd.Name == "" {
 		return nil, domain.ErrInvalid
 	}
@@ -92,7 +107,7 @@ func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*Register
 		return nil, err
 	}
 	if uc.auditor != nil {
-		_ = uc.auditor.Record(ctx, audit.Entry{
+		audit.RecordBestEffort(ctx, uc.auditor, audit.Entry{
 			SubjectType: "users",
 			SubjectID:   user.ID,
 			Action:      audit.ActionCreated,

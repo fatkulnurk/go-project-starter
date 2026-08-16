@@ -23,7 +23,8 @@ var files embed.FS
 // layout data so templates read {{.Common.AppName}} unchanged.
 type Common = view.Common
 
-// WelcomeData is the view model for welcome.html.
+// WelcomeData is the view model for welcome.html, carrying the brand common
+// injected into the base layout.
 type WelcomeData struct {
 	Common
 }
@@ -42,7 +43,8 @@ func mustWelcome() *htmltemplate.Template {
 	return htmltemplate.Must(layout.ParseFS(files, "web/welcome.html"))
 }
 
-// RenderWelcome executes the welcome template and returns the resulting HTML.
+// RenderWelcome executes the welcome template with the given view model and
+// returns the rendered HTML string.
 func RenderWelcome(data WelcomeData) (string, error) {
 	return branding.Render(welcomeT, "welcome", data)
 }

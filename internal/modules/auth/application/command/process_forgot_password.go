@@ -23,22 +23,28 @@ type ProcessForgotPasswordResult struct {
 // send. It runs inside the queue worker, so unknown identifiers are silently
 // skipped instead of revealing registration status on the HTTP path.
 type ProcessForgotPassword struct {
-	users     domain.UserRepository
-	codes     domain.VerificationCodeRepository
-	otpLength int
-	otpTTL    time.Duration
-	clock     clock.Clock
+	users       domain.UserRepository
+	codes       domain.VerificationCodeRepository
+	otpLength   int
+	otpTTL      time.Duration
+	clock       clock.Clock
+	countryCode string
 }
 
-// NewProcessForgotPassword builds the use case.
-func NewProcessForgotPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, otpLength int, otpTTL time.Duration, clk clock.Clock) *ProcessForgotPassword {
-	return &ProcessForgotPassword{users: users, codes: codes, otpLength: otpLength, otpTTL: otpTTL, clock: clk}
+// NewProcessForgotPassword builds the worker-side forgot-password use case
+// from the user and code repositories plus the OTP and country-code settings.
+func NewProcessForgotPassword(users domain.UserRepository, codes domain.VerificationCodeRepository, otpLength int, otpTTL time.Duration, clk clock.Clock, countryCode string) *ProcessForgotPassword {
+	return &ProcessForgotPassword{users: users, codes: codes, otpLength: otpLength, otpTTL: otpTTL, clock: clk, countryCode: countryCode}
 }
 
 // Execute resolves identifier to a user and, when found, issues a reset code.
 // A nil User in the result means the identifier is not registered: skip.
 func (uc *ProcessForgotPassword) Execute(ctx context.Context, identifier string) (*ProcessForgotPasswordResult, error) {
-	user, err := findByIdentifier(ctx, uc.users, identifier)
+	identifier, err := normalizeIdentifier(identifier, uc.countryCode)
+	if err != nil {
+		return &ProcessForgotPasswordResult{}, nil
+	}
+	user, err := findByIdentifier(ctx, uc.users, identifier, uc.countryCode)
 	if err != nil {
 		return nil, err
 	}

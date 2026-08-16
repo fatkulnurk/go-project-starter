@@ -16,6 +16,8 @@ import (
 )
 
 // New opens a pool for cfg.Database. Callers must Close it.
+// It applies the pool sizes from cfg and pings the server; a failed ping
+// closes the pool and returns a wrapped error.
 func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 	var db *sql.DB
 	var err error
@@ -56,23 +58,6 @@ func New(cfg config.DatabaseConfig) (*sql.DB, error) {
 		return nil, fmt.Errorf("ping %s: %w", cfg.Driver, err)
 	}
 	return db, nil
-}
-
-// DSN builds a driver-agnostic database/sql DSN for cfg. The postgres value
-// is a URL with properly escaped credentials; the mysql value is a
-// go-sql-driver DSN. Prefer New, which uses structured configs for both
-// drivers so credentials with reserved characters always work.
-func DSN(cfg config.DatabaseConfig) (string, string) {
-	switch cfg.Driver {
-	case config.DriverPostgres:
-		return postgresDSN(cfg), "pgx"
-	default:
-		mc, err := mysqlConfig(cfg)
-		if err != nil {
-			return "", config.DriverMySQL
-		}
-		return mc.FormatDSN(), config.DriverMySQL
-	}
 }
 
 // MigrateURL builds a golang-migrate database URL for cfg. Both drivers parse

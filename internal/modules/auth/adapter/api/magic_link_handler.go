@@ -41,16 +41,18 @@ func (h *handler) magicLinkVerify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, toTokenResponse(res.AccessToken, res.RefreshToken, res.ExpiresIn, res.User))
+	h.writeLoginResult(w, res)
 }
 
 // magicLinkVerifyGet verifies a magic link delivered by email: the token
-// travels in the query string so a plain click resolves the login.
+// travels in the query string so a plain click resolves the login. MFA-enabled
+// accounts receive a challenge instead of credentials and must complete it via
+// /mfa/verify.
 func (h *handler) magicLinkVerifyGet(w http.ResponseWriter, r *http.Request) {
 	res, err := h.deps.MagicLinkVerify.Execute(r.Context(), command.MagicLinkVerifyCommand{Token: r.URL.Query().Get("token")})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeSuccess(w, http.StatusOK, toTokenResponse(res.AccessToken, res.RefreshToken, res.ExpiresIn, res.User))
+	h.writeLoginResult(w, res)
 }

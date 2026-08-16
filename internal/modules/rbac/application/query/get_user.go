@@ -3,6 +3,7 @@ package query
 
 import (
 	"context"
+	"log/slog"
 
 	rbaccache "github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/domain"
@@ -22,12 +23,16 @@ type GetUser struct {
 	cache  *rbaccache.PermissionCache
 }
 
-// NewGetUser builds the use case. cache may be nil to bypass caching.
+// NewGetUser builds the use case. cache may be nil to bypass caching and
+// always read directly from the repository.
 func NewGetUser(access domain.UserAccessRepository, cache *rbaccache.PermissionCache) *GetUser {
 	return &GetUser{access: access, cache: cache}
 }
 
-// Execute runs the use case.
+// Execute runs the use case. When a cache is configured it checks the versioned
+// user entry first and only falls back to the repository on a miss or stale
+// version, then refreshes the cache best-effort (a failed cache write is logged
+// and never turned into an error). Repository and cache errors are propagated.
 func (q *GetUser) Execute(ctx context.Context, userID string) (*RolesPermissions, error) {
 	if q.cache == nil {
 		return q.load(ctx, userID)
@@ -47,8 +52,11 @@ func (q *GetUser) Execute(ctx context.Context, userID string) (*RolesPermissions
 	if err != nil {
 		return nil, err
 	}
+	// A failed cache write must never turn a successful load into an
+	// authorization error; it is just a wasted write. The versioned design
+	// stays correct either way.
 	if err := q.cache.SetUser(ctx, userID, ver, res.Roles, res.Permissions); err != nil {
-		return nil, err
+		slog.Warn("rbac cache write failed", "user_id", userID, "err", err)
 	}
 	return res, nil
 }

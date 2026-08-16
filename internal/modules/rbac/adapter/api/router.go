@@ -12,7 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Deps bundles the use cases and contracts the handlers need.
+// Deps bundles the use cases and contracts the handlers need. All use-case
+// pointers must be non-nil; Authenticator and Authorizer gate every route.
 type Deps struct {
 	CreateRole          *command.CreateRole
 	CreatePermission    *command.CreatePermission
@@ -39,6 +40,7 @@ func RegisterRoutes(r chi.Router, deps Deps) {
 	h := &handler{deps: deps}
 
 	guard := func(group chi.Router) {
+		group.Use(platformhttp.AuditActor)
 		group.Use(platformhttp.Authenticate(deps.Authenticator))
 		group.Use(platformhttp.RequirePermission(deps.Authorizer, authorization.PermissionManageRBAC))
 	}

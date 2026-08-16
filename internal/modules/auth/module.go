@@ -7,6 +7,8 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/fatkulnurk/go-project-starter/internal/application/audit"
@@ -29,7 +31,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// mfaChallengeTTL bounds the lifetime of the MFA challenge issued during the
+// second step of a TOTP-protected login.
+const mfaChallengeTTL = 5 * time.Minute
+
 // Settings carries auth behavior configured in the composition root.
+// All fields are set by the application wiring; the module consumes them as-is.
 type Settings struct {
 	AccessTokenTTL        time.Duration
 	RefreshTokenTTL       time.Duration
@@ -47,7 +54,13 @@ type Settings struct {
 	// AssetsBaseURL is the absolute base URL of static assets used in email
 	// HTML (defaults to BaseURL when empty).
 	AssetsBaseURL string
-	DevMode       bool
+	// DefaultCountryCode expands local phone numbers (leading 0) into E.164
+	// during normalization, e.g. "62" for Indonesia.
+	DefaultCountryCode string
+	// MaxActiveSessions caps how many concurrent refresh-token families
+	// (sessions) a user may hold; the oldest are revoked when exceeded.
+	MaxActiveSessions int
+	DevMode           bool
 }
 
 // Dependencies are the ports the module needs; all wired by the composition
@@ -69,7 +82,8 @@ type Dependencies struct {
 	Location *time.Location
 }
 
-// Module wires the auth use cases and their adapters.
+// Module wires the auth use cases and their adapters. It exposes the use
+// cases through API and the adapters through RegisterAPI/RegisterQueue.
 type Module struct {
 	API      API
 	authn    applicationauth.Authenticator
@@ -84,40 +98,51 @@ type Module struct {
 	processMagic  *command.ProcessMagicLink
 }
 
-// New constructs the auth module.
+// New constructs the auth module, wiring the repositories, use cases and the
+// token/MFA rate-limit stores. The returned Module exposes its use cases via
+// API and registers them on routers through RegisterAPI and RegisterQueue.
 func New(deps Dependencies) *Module {
 	users := infrastructure.NewUserRepository(deps.DB, deps.DBDriver, deps.Location)
 	refreshTokens := infrastructure.NewRefreshTokenRepository(deps.DB, deps.DBDriver, deps.Location)
 	codes := infrastructure.NewVerificationCodeRepository(deps.DB, deps.DBDriver, deps.Location)
 	pending := infrastructure.NewPendingContactChangeRepository(deps.DB, deps.DBDriver, deps.Location)
+	recovery := infrastructure.NewRecoveryCodeRepository(deps.DB, deps.DBDriver, deps.Location)
 
 	roles := rbacAdapter{svc: deps.RBAC}
 
-	issuer := command.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Auditor, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock)
-	rateLimiter := command.NewLoginRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow)
+	denylist := command.NewJTIDenylist(deps.Cache, deps.Settings.AccessTokenTTL)
+	challenges := command.NewMFAChallenges(deps.Cache, mfaChallengeTTL)
+	issuer := command.NewTokenIssuer(deps.Tokens, refreshTokens, roles, deps.Auditor, deps.Settings.AccessTokenTTL, deps.Settings.RefreshTokenTTL, deps.Clock, deps.Settings.MaxActiveSessions, denylist)
+	rateLimiter := command.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:login")
 	forgotLimiter := command.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:forgot")
 	magicLimiter := command.NewRateLimiter(deps.Cache, deps.Settings.RateLimitMax, deps.Settings.RateLimitWindow, "rl:magic")
 
-	processForgot := command.NewProcessForgotPassword(users, codes, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Clock)
+	processForgot := command.NewProcessForgotPassword(users, codes, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Clock, deps.Settings.DefaultCountryCode)
 	processMagic := command.NewProcessMagicLink(users, codes, deps.Settings.BaseURL, deps.Settings.MagicLinkTTL, deps.Clock)
 
 	return &Module{
 		API: API{
-			Register:         command.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode),
-			Login:            command.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter),
+			Register:         command.NewRegister(users, codes, deps.Hasher, deps.Enqueuer, roles, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.OTPMaxAttempts, deps.Settings.DevMode, deps.Settings.DefaultCountryCode),
+			Login:            command.NewLogin(users, deps.Hasher, issuer, deps.Settings.RequireEmailVerified, rateLimiter, recovery, challenges, deps.Settings.DefaultCountryCode),
 			MagicLinkRequest: command.NewMagicLinkRequest(deps.Enqueuer, deps.Settings.MagicLinkTTL, magicLimiter),
-			MagicLinkVerify:  command.NewMagicLinkVerify(codes, users, issuer),
+			MagicLinkVerify:  command.NewMagicLinkVerify(codes, users, issuer, challenges),
 			VerifyEmail:      command.NewVerifyEmail(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			VerifyPhone:      command.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			ForgotPassword:   command.NewForgotPassword(deps.Enqueuer, deps.Settings.OTPTTL, forgotLimiter),
-			ResetPassword:    command.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts),
-			Refresh:          command.NewRefresh(refreshTokens, users, issuer),
-			Logout:           command.NewLogout(refreshTokens, deps.Auditor),
-			UpdateProfile:    command.NewUpdateProfile(users, codes, pending, deps.Enqueuer, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode),
+			VerifyPhone:      command.NewVerifyPhone(users, codes, pending, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts, deps.Settings.DefaultCountryCode),
+			ForgotPassword:   command.NewForgotPassword(deps.Enqueuer, deps.Settings.OTPTTL, forgotLimiter, deps.Settings.DefaultCountryCode),
+			ResetPassword:    command.NewResetPassword(users, codes, refreshTokens, deps.Hasher, deps.Auditor, deps.Clock, deps.Settings.OTPMaxAttempts, deps.Settings.DefaultCountryCode, denylist),
+			Refresh:          command.NewRefresh(refreshTokens, users, issuer, denylist),
+			Logout:           command.NewLogout(refreshTokens, deps.Auditor, denylist),
+			UpdateProfile:    command.NewUpdateProfile(users, codes, pending, deps.Enqueuer, deps.Auditor, deps.Clock, deps.Settings.OTPLength, deps.Settings.OTPTTL, deps.Settings.DevMode, deps.Settings.DefaultCountryCode),
+			ChangePassword:   command.NewChangePassword(users, deps.Hasher, refreshTokens, deps.Auditor, deps.Clock, denylist),
+			SetupTOTP:        command.NewSetupTOTP(users, deps.Auditor, deps.Clock, deps.Settings.AppName),
+			ConfirmTOTP:      command.NewConfirmTOTP(users, recovery, deps.Auditor, deps.Clock),
+			DisableTOTP:      command.NewDisableTOTP(users, recovery, deps.Auditor, deps.Clock),
+			VerifyMFA:        command.NewVerifyMFA(challenges, users, recovery, issuer, rateLimiter),
+			SessionRevoke:    command.NewSessionRevoke(refreshTokens, deps.Auditor, denylist),
 			Profile:          query.NewProfile(users, roles),
-			FindUserByEmail:  query.NewFindUserByEmail(users),
+			Sessions:         query.NewSessions(refreshTokens, deps.Clock),
 		},
-		authn:         &authenticator{tokens: deps.Tokens, users: users},
+		authn:         &authenticator{tokens: deps.Tokens, users: users, cache: deps.Cache},
 		mailer:        deps.Mailer,
 		sms:           deps.SMS,
 		settings:      deps.Settings,
@@ -132,7 +157,9 @@ func New(deps Dependencies) *Module {
 // shared HTTP middleware.
 func (m *Module) Authenticator() applicationauth.Authenticator { return m.authn }
 
-// RegisterAPI mounts the module's JSON API routes on the shared router.
+// RegisterAPI mounts the module's JSON API routes on the shared router. The
+// api.Deps bundle every use case, the authenticator and the public rate-limit
+// settings.
 func (m *Module) RegisterAPI(r chi.Router) {
 	api.RegisterRoutes(r, api.Deps{
 		Register:              m.API.Register,
@@ -146,8 +173,14 @@ func (m *Module) RegisterAPI(r chi.Router) {
 		Refresh:               m.API.Refresh,
 		Logout:                m.API.Logout,
 		UpdateProfile:         m.API.UpdateProfile,
+		ChangePassword:        m.API.ChangePassword,
+		SetupTOTP:             m.API.SetupTOTP,
+		ConfirmTOTP:           m.API.ConfirmTOTP,
+		DisableTOTP:           m.API.DisableTOTP,
+		VerifyMFA:             m.API.VerifyMFA,
+		SessionRevoke:         m.API.SessionRevoke,
 		Profile:               m.API.Profile,
-		FindUserByEmail:       m.API.FindUserByEmail,
+		Sessions:              m.API.Sessions,
 		Authenticator:         m.authn,
 		Cache:                 m.cache,
 		PublicRateLimitMax:    m.settings.PublicRateLimitMax,
@@ -155,7 +188,9 @@ func (m *Module) RegisterAPI(r chi.Router) {
 	})
 }
 
-// RegisterQueue registers the module's task handlers on a worker.
+// RegisterQueue registers the module's task handlers on a worker. Handlers
+// render and send email/SMS using the module's branding and the worker-side
+// processForgot/processMagic use cases.
 func (m *Module) RegisterQueue(r appaqueue.Registrar) {
 	queueadapter.Register(r, m.mailer, m.sms, queueadapterCommon(m.settings, m.clock), m.processForgot, m.processMagic)
 }
@@ -173,12 +208,28 @@ func queueadapterCommon(s Settings, clk clock.Clock) queueadapter.Common {
 type authenticator struct {
 	tokens token.Manager
 	users  domain.UserRepository
+	cache  cache.Cache
 }
 
+// Authenticate validates a raw access token and resolves it to an identity.
+// It returns ErrUnauthenticated for malformed, revoked, or suspended-user
+// tokens, and fails open on denylist cache errors (those are logged, not
+// propagated, so an unavailable denylist never locks everyone out).
 func (a *authenticator) Authenticate(ctx context.Context, raw string) (*applicationauth.Identity, error) {
 	claims, err := a.tokens.ParseAccessToken(ctx, raw)
 	if err != nil {
 		return nil, applicationauth.ErrUnauthenticated
+	}
+	if a.cache != nil && claims.JTI != "" {
+		if _, err := a.cache.Get(ctx, command.JTIDenyKey(claims.JTI)); err == nil {
+			// The access token was explicitly revoked (logout, session revoke,
+			// password change).
+			return nil, applicationauth.ErrUnauthenticated
+		} else if err != nil && !errors.Is(err, cache.ErrNotFound) {
+			// Fail open on cache errors so an unavailable denylist does not
+			// lock everyone out; refresh tokens are still revoked in the DB.
+			slog.Warn("access token denylist check failed", "err", err)
+		}
 	}
 	user, err := a.users.FindByID(ctx, claims.UserID)
 	if err != nil {
@@ -197,7 +248,8 @@ type rbacAdapter struct {
 	svc rbac.Service
 }
 
-// RolesAndPermissions implements port.Roles.
+// RolesAndPermissions implements port.Roles. When no RBAC service is wired it
+// returns nil,nil,nil, so the caller treats the user as having no roles.
 func (a rbacAdapter) RolesAndPermissions(ctx context.Context, userID string) ([]string, []string, error) {
 	if a.svc == nil {
 		return nil, nil, nil
@@ -206,7 +258,8 @@ func (a rbacAdapter) RolesAndPermissions(ctx context.Context, userID string) ([]
 	return roles, permissions, err
 }
 
-// AssignDefaultRole implements port.Roles.
+// AssignDefaultRole implements port.Roles. Without an RBAC service it is a
+// no-op, so registration and seeding still succeed when RBAC is not wired.
 func (a rbacAdapter) AssignDefaultRole(ctx context.Context, userID string) error {
 	if a.svc == nil {
 		return nil

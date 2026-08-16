@@ -14,11 +14,13 @@ import (
 )
 
 // Local is a filesystem-backed storage.
+// Keys are resolved under baseDir and must not escape it via path traversal.
 type Local struct {
 	baseDir string
 }
 
 // NewLocal builds a local storage rooted at cfg.Dir.
+// The directory is cleaned but not created; writes create it on demand.
 func NewLocal(cfg config.LocalStorageConfig) *Local {
 	return &Local{baseDir: filepath.Clean(cfg.Dir)}
 }
@@ -40,6 +42,8 @@ func (s *Local) resolve(key string) (string, error) {
 }
 
 // Put implements storage.Storage.
+// It creates missing parent directories, copies r into the resolved file and
+// returns storage.ErrInvalidKey for keys escaping the root.
 func (s *Local) Put(_ context.Context, key string, r io.Reader) error {
 	path, err := s.resolve(key)
 	if err != nil {
@@ -58,6 +62,8 @@ func (s *Local) Put(_ context.Context, key string, r io.Reader) error {
 }
 
 // Get implements storage.Storage.
+// It returns storage.ErrNotFound for missing files and storage.ErrInvalidKey
+// for keys escaping the root; otherwise the caller owns the ReadCloser.
 func (s *Local) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	path, err := s.resolve(key)
 	if err != nil {
@@ -71,6 +77,8 @@ func (s *Local) Get(_ context.Context, key string) (io.ReadCloser, error) {
 }
 
 // Delete implements storage.Storage.
+// Deleting a missing file is a no-op (nil); a key escaping the root returns
+// storage.ErrInvalidKey.
 func (s *Local) Delete(_ context.Context, key string) error {
 	path, err := s.resolve(key)
 	if err != nil {
@@ -84,6 +92,8 @@ func (s *Local) Delete(_ context.Context, key string) error {
 }
 
 // Attributes implements storage.Storage.
+// It reports the object size, returning storage.ErrNotFound for missing files
+// and storage.ErrInvalidKey for keys escaping the root.
 func (s *Local) Attributes(_ context.Context, key string) (storage.ObjectAttrs, error) {
 	path, err := s.resolve(key)
 	if err != nil {

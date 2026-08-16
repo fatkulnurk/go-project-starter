@@ -9,12 +9,14 @@ import (
 )
 
 // RevokePermissionCommand revokes a direct user permission (by code).
+// The direct grant is removed; inherited permissions are unaffected.
 type RevokePermissionCommand struct {
 	UserID     string
 	Permission string // permission code
 }
 
-// RevokePermission revokes a direct user permission.
+// RevokePermission revokes a direct user permission. The cache is invalidated
+// after a successful revocation so the removed access stops being served.
 type RevokePermission struct {
 	permissions domain.PermissionRepository
 	access      domain.UserAccessRepository
@@ -22,12 +24,15 @@ type RevokePermission struct {
 	audit       audit.Recorder
 }
 
-// NewRevokePermission builds the use case.
+// NewRevokePermission builds the use case. bumper may be nil to skip cache
+// invalidation and auditor may be nil to skip audit recording.
 func NewRevokePermission(permissions domain.PermissionRepository, access domain.UserAccessRepository, bumper CacheBumper, auditor audit.Recorder) *RevokePermission {
 	return &RevokePermission{permissions: permissions, access: access, bumper: bumper, audit: auditor}
 }
 
-// Execute runs the use case.
+// Execute runs the use case. It returns domain.ErrInvalid on blank user/permission
+// and domain.ErrNotFound when the permission does not exist. On success it
+// bumps the cache (checked, one retry) and records an audit entry.
 func (uc *RevokePermission) Execute(ctx context.Context, cmd RevokePermissionCommand) error {
 	userID := strings.TrimSpace(cmd.UserID)
 	code := strings.TrimSpace(cmd.Permission)
@@ -44,9 +49,9 @@ func (uc *RevokePermission) Execute(ctx context.Context, cmd RevokePermissionCom
 	if err := uc.access.RevokePermission(ctx, userID, perm.ID); err != nil {
 		return err
 	}
-	bumpBestEffort(ctx, uc.bumper)
+	bumpChecked(ctx, uc.bumper)
 	if uc.audit != nil {
-		_ = uc.audit.Record(ctx, audit.Entry{
+		audit.RecordBestEffort(ctx, uc.audit, audit.Entry{
 			SubjectType: "user_permissions",
 			SubjectID:   userID,
 			Action:      audit.ActionDeleted,

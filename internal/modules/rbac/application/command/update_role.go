@@ -9,25 +9,30 @@ import (
 )
 
 // UpdateRoleCommand renames a role's display label. Code is immutable.
+// The role's users and permission links are preserved.
 type UpdateRoleCommand struct {
 	Code    string
 	NewName string
 }
 
 // UpdateRole renames a role's display label, keeping its users and permission
-// links.
+// links. Built-in roles are protected; the cache is invalidated on change.
 type UpdateRole struct {
 	roles   domain.RoleRepository
 	bumper  CacheBumper
 	auditor audit.Recorder
 }
 
-// NewUpdateRole builds the use case.
+// NewUpdateRole builds the use case. bumper may be nil to skip cache
+// invalidation and auditor may be nil to skip audit recording.
 func NewUpdateRole(roles domain.RoleRepository, bumper CacheBumper, auditor audit.Recorder) *UpdateRole {
 	return &UpdateRole{roles: roles, bumper: bumper, auditor: auditor}
 }
 
-// Execute runs the use case.
+// Execute runs the use case. It returns domain.ErrInvalid on blank input,
+// domain.ErrProtected for built-in roles and domain.ErrNotFound when the role
+// does not exist. A rename to the current name is a successful no-op; a real
+// change bumps the cache best-effort and records an audit entry.
 func (uc *UpdateRole) Execute(ctx context.Context, cmd UpdateRoleCommand) error {
 	code := strings.TrimSpace(cmd.Code)
 	newName := strings.TrimSpace(cmd.NewName)
@@ -52,7 +57,7 @@ func (uc *UpdateRole) Execute(ctx context.Context, cmd UpdateRoleCommand) error 
 	}
 	bumpBestEffort(ctx, uc.bumper)
 	if uc.auditor != nil {
-		_ = uc.auditor.Record(ctx, audit.Entry{
+		audit.RecordBestEffort(ctx, uc.auditor, audit.Entry{
 			SubjectType: "roles",
 			SubjectID:   role.ID,
 			Action:      audit.ActionUpdated,

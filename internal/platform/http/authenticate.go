@@ -39,6 +39,8 @@ func Authenticate(authenticator appauth.Authenticator) func(http.Handler) http.H
 }
 
 // BearerToken extracts the token from the Authorization header.
+// The "Bearer " prefix is matched case-insensitively and the remainder is
+// trimmed; requests without it return "".
 func BearerToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	if len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {

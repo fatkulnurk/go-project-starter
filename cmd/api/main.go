@@ -16,6 +16,8 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/modules/auth"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac"
+	"github.com/fatkulnurk/go-project-starter/internal/modules/rbac/application/command"
+	rbacseeder "github.com/fatkulnurk/go-project-starter/internal/modules/rbac/seeder"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/audit"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/cache"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/clock"
@@ -76,6 +78,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	defer mailSender.Close()
 
 	smsSender, err := sms.New(cfg.SMS)
 	if err != nil {
@@ -83,7 +86,7 @@ func run() error {
 	}
 
 	tokenManager := token.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience)
-	hasher := hash.NewHash(0)
+	hasher := hash.NewBCrypt(0)
 	auditor := audit.New(db, cfg.Database.Driver, cfg.Location())
 
 	// --- modules ------------------------------------------------------------
@@ -94,6 +97,15 @@ func run() error {
 		CacheTTL: cfg.RBAC.PermissionCacheTTL,
 		Auditor:  auditor,
 	})
+
+	// Ensure the well-known roles/permissions exist so registration and the
+	// RBAC admin API work on a fresh database without a manual seed step.
+	if err := rbacModule.Bootstrap(context.Background(), command.BootstrapOptions{
+		DefaultRoles:       rbacseeder.DefaultRoles,
+		DefaultPermissions: rbacseeder.DefaultPermissions,
+	}); err != nil {
+		return err
+	}
 
 	authModule := auth.New(auth.Dependencies{
 		DB:       db,
@@ -122,6 +134,8 @@ func run() error {
 			BaseURL:               cfg.BaseURL,
 			AppName:               cfg.AppName,
 			AssetsBaseURL:         cfg.AssetsBaseURLOrDefault(),
+			DefaultCountryCode:    cfg.Auth.DefaultCountryCode,
+			MaxActiveSessions:     cfg.Auth.MaxActiveSessions,
 			DevMode:               devMode,
 		},
 	})

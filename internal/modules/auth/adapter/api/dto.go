@@ -23,6 +23,13 @@ const (
 	responseAccessToken  = "access_token"
 	responseRefreshToken = "refresh_token"
 	responseTokenType    = "token_type"
+	responseMFARequired  = "mfa_required"
+	responseChallenge    = "challenge"
+	responseSecret       = "secret"
+	responseProvisioning = "provisioning_uri"
+	responseRecovery     = "recovery_codes"
+	responseSessions     = "sessions"
+	responseTOTPEnabled  = "totp_enabled"
 )
 
 // userResponse is the public view of a user account. Roles are owned by the
@@ -51,7 +58,8 @@ func toUserResponse(u *domain.User) userResponse {
 	}
 }
 
-// profileResponse extends the user with RBAC data.
+// profileResponse extends the user view with the roles and permissions
+// resolved from the RBAC module.
 type profileResponse struct {
 	userResponse
 	Roles       []string `json:"roles"`

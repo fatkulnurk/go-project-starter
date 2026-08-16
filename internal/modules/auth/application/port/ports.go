@@ -11,6 +11,7 @@ type Roles interface {
 	// RolesAndPermissions returns the effective role and permission names of
 	// the user.
 	RolesAndPermissions(ctx context.Context, userID string) (roles, permissions []string, err error)
-	// AssignDefaultRole grants the default role (e.g. "user") to a fresh user.
+	// AssignDefaultRole grants the default role (e.g. "user") to a fresh user
+	// and reports any failure to do so.
 	AssignDefaultRole(ctx context.Context, userID string) error
 }
