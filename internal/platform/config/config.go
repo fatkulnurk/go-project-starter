@@ -35,6 +35,8 @@ const (
 	DriverSES      = "ses"
 	DriverTwilio   = "twilio"
 	DriverAsynq    = "asynq"
+	DriverRabbitMQ = "rabbitmq"
+	DriverKafka    = "kafka"
 )
 
 // Environment variable keys. Each maps directly to a field in Config and is
@@ -74,6 +76,15 @@ const (
 	envQueueConcurrency = "QUEUE_CONCURRENCY"
 	envQueueRedisDB     = "QUEUE_REDIS_DB"
 	envQueueRedisPool   = "QUEUE_REDIS_POOL_SIZE"
+
+	envPubSubDriver     = "PUBSUB_DRIVER"
+	envPubSubInstanceID = "PUBSUB_INSTANCE_ID"
+	envRabbitMQURL      = "PUBSUB_RABBITMQ_URL"
+	envRabbitMQExchange = "PUBSUB_RABBITMQ_EXCHANGE"
+	envRabbitMQDurable  = "PUBSUB_RABBITMQ_DURABLE"
+	envKafkaBrokers     = "PUBSUB_KAFKA_BROKERS"
+	envKafkaClientID    = "PUBSUB_KAFKA_CLIENT_ID"
+	envKafkaGroupPrefix = "PUBSUB_KAFKA_GROUP_PREFIX"
 
 	envStorageDriver      = "STORAGE_DRIVER"
 	envStorageLocalDir    = "STORAGE_LOCAL_DIR"
@@ -134,9 +145,9 @@ const (
 // production; everything else degrades to a sensible dev value.
 const (
 	defaultEnvironment           = EnvironmentDevelopment
-	defaultPort                  = 8080
-	defaultWebPort               = 8081
-	defaultBaseURL               = "http://localhost:8080"
+	defaultPort                  = 32100
+	defaultWebPort               = 32101
+	defaultBaseURL               = "http://localhost:32100"
 	defaultAppName               = "Go Project Starter"
 	defaultTimeZone              = "UTC"
 	defaultDBDriver              = DriverMySQL
@@ -161,6 +172,11 @@ const (
 	defaultQueueConcurrency      = 10
 	defaultQueueRedisDB          = 1
 	defaultQueueRedisPool        = 10
+	defaultPubSubDriver          = DriverMemory
+	defaultRabbitMQURL           = "amqp://guest:guest@localhost:32130"
+	defaultRabbitMQExchange      = "pubsub"
+	defaultKafkaClientID         = "pubsub"
+	defaultKafkaGroupPrefix      = "pubsub"
 	defaultStorageDriver         = DriverLocal
 	defaultStorageLocalDir       = "./storage"
 	defaultS3Region              = "us-east-1"
@@ -221,6 +237,7 @@ type Config struct {
 	Database DatabaseConfig
 	Cache    CacheConfig
 	Queue    QueueConfig
+	PubSub   PubSubConfig
 	Storage  StorageConfig
 	Mail     MailConfig
 	SMS      SMSConfig
@@ -317,6 +334,36 @@ type QueueConfig struct {
 	RedisDB       int
 	RedisPoolSize int
 	Concurrency   int
+}
+
+// PubSubConfig selects the pub/sub broker.
+// Driver is one of "memory", "redis", "rabbitmq" or "kafka". Redis reuses the
+// cache Redis settings; RabbitMQ and Kafka hold their own connection settings.
+// InstanceID disambiguates subscriber instances (used to build RabbitMQ queue
+// names and Kafka consumer-group IDs); empty means a random value per process.
+type PubSubConfig struct {
+	Driver     string
+	Redis      RedisConfig
+	RabbitMQ   RabbitMQConfig
+	Kafka      KafkaConfig
+	InstanceID string
+}
+
+// RabbitMQConfig holds AMQP settings. Durable makes subscriber queues survive
+// broker restarts (messages wait until the subscriber consumes them).
+type RabbitMQConfig struct {
+	URL      string
+	Exchange string
+	Durable  bool
+}
+
+// KafkaConfig holds Kafka connection settings. GroupPrefix names the consumer
+// group prefix; a unique group per instance (GroupPrefix-InstanceID) yields a
+// broadcast, a shared group yields competing consumers.
+type KafkaConfig struct {
+	Brokers     []string
+	ClientID    string
+	GroupPrefix string
 }
 
 // StorageConfig selects the storage driver.
@@ -488,8 +535,29 @@ func (b *builder) list(key string) []string {
 
 // Load reads configuration from the environment. Any parse error or
 // validation failure aborts startup with a descriptive message.
+// Load reads configuration from the environment, preceded by the .env file
+// (path from ENV_FILE, default ".env" in the working directory). .env only
+// fills variables that are not already set, so real env vars (and docker
+// compose) keep precedence.
 func Load() (Config, error) {
+	envFile := os.Getenv("ENV_FILE")
+	if envFile == "" {
+		envFile = ".env"
+	}
+	if err := loadDotEnv(envFile); err != nil {
+		return Config{}, err
+	}
 	b := &builder{}
+	redis := RedisConfig{
+		Addr:         b.str(envRedisAddr, defaultRedisAddr),
+		Password:     b.str(envRedisPassword, ""),
+		DB:           b.int(envRedisDB, defaultRedisDB),
+		PoolSize:     b.int(envRedisPoolSize, defaultRedisPoolSize),
+		MinIdleConns: b.int(envRedisMinIdle, defaultRedisMinIdle),
+		DialTimeout:  b.duration(envRedisDialTimeout, defaultRedisDialTimeout),
+		ReadTimeout:  b.duration(envRedisReadTimeout, defaultRedisReadTimeout),
+		WriteTimeout: b.duration(envRedisWriteTimeout, defaultRedisWriteTimeout),
+	}
 	cfg := Config{
 		Environment:   b.str(envAppEnv, defaultEnvironment),
 		Port:          b.int(envAppPort, defaultPort),
@@ -519,16 +587,7 @@ func Load() (Config, error) {
 		},
 		Cache: CacheConfig{
 			Driver: b.str(envCacheDriver, defaultCacheDriver),
-			Redis: RedisConfig{
-				Addr:         b.str(envRedisAddr, defaultRedisAddr),
-				Password:     b.str(envRedisPassword, ""),
-				DB:           b.int(envRedisDB, defaultRedisDB),
-				PoolSize:     b.int(envRedisPoolSize, defaultRedisPoolSize),
-				MinIdleConns: b.int(envRedisMinIdle, defaultRedisMinIdle),
-				DialTimeout:  b.duration(envRedisDialTimeout, defaultRedisDialTimeout),
-				ReadTimeout:  b.duration(envRedisReadTimeout, defaultRedisReadTimeout),
-				WriteTimeout: b.duration(envRedisWriteTimeout, defaultRedisWriteTimeout),
-			},
+			Redis:  redis,
 		},
 		Queue: QueueConfig{
 			Driver:        b.str(envQueueDriver, defaultQueueDriver),
@@ -537,6 +596,21 @@ func Load() (Config, error) {
 			RedisDB:       b.int(envQueueRedisDB, defaultQueueRedisDB),
 			RedisPoolSize: b.int(envQueueRedisPool, defaultQueueRedisPool),
 			Concurrency:   b.int(envQueueConcurrency, defaultQueueConcurrency),
+		},
+		PubSub: PubSubConfig{
+			Driver:     b.str(envPubSubDriver, defaultPubSubDriver),
+			InstanceID: b.str(envPubSubInstanceID, ""),
+			Redis:      redis,
+			RabbitMQ: RabbitMQConfig{
+				URL:      b.str(envRabbitMQURL, defaultRabbitMQURL),
+				Exchange: b.str(envRabbitMQExchange, defaultRabbitMQExchange),
+				Durable:  b.bool(envRabbitMQDurable),
+			},
+			Kafka: KafkaConfig{
+				Brokers:     b.list(envKafkaBrokers),
+				ClientID:    b.str(envKafkaClientID, defaultKafkaClientID),
+				GroupPrefix: b.str(envKafkaGroupPrefix, defaultKafkaGroupPrefix),
+			},
 		},
 		Storage: StorageConfig{
 			Driver: b.str(envStorageDriver, defaultStorageDriver),
@@ -675,6 +749,24 @@ func (c Config) validate() []string {
 	}
 	if c.Queue.Driver == DriverAsynq && c.Queue.RedisPoolSize < 1 {
 		errs = append(errs, "QUEUE_REDIS_POOL_SIZE must be >= 1")
+	}
+
+	switch c.PubSub.Driver {
+	case DriverMemory, DriverRedis, DriverRabbitMQ, DriverKafka:
+	default:
+		errs = append(errs, "PUBSUB_DRIVER must be 'memory', 'redis', 'rabbitmq' or 'kafka'")
+	}
+	if c.PubSub.Driver == DriverRabbitMQ {
+		u, err := url.Parse(c.PubSub.RabbitMQ.URL)
+		if err != nil || (u.Scheme != "amqp" && u.Scheme != "amqps") || u.Host == "" {
+			errs = append(errs, fmt.Sprintf("PUBSUB_RABBITMQ_URL must be a valid amqp(s) URL, got %q", c.PubSub.RabbitMQ.URL))
+		}
+		if c.PubSub.RabbitMQ.Exchange == "" {
+			errs = append(errs, "PUBSUB_RABBITMQ_EXCHANGE must not be empty")
+		}
+	}
+	if c.PubSub.Driver == DriverKafka && len(c.PubSub.Kafka.Brokers) == 0 {
+		errs = append(errs, "PUBSUB_KAFKA_BROKERS must contain at least one broker when PUBSUB_DRIVER=kafka")
 	}
 
 	switch c.Storage.Driver {

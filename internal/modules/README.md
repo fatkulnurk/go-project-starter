@@ -20,6 +20,7 @@ internal/modules/<name>/
 │   ├── api/           HTTP handlers + DTOs for JSON APIs (no business logic)
 │   ├── web/           HTTP handlers rendering HTML pages (non-JSON, e.g. homepage)
 │   ├── queue/         background task handlers (if the module has any)
+│   ├── pubsub/        pub/sub topic handlers (if the module has any)
 │   └── schedule/      periodic-job handlers (if the module has any)
 ├── module.go          `New(Dependencies) *Module` — composition inside module
 ├── api.go             `API` + `Service` — the public face other modules may use

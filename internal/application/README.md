@@ -21,6 +21,7 @@ must not import `internal/platform` or `internal/modules`.
 | `media`         | media-library contract (`media.Library`, attach/read/remove/URL)|
 | `otp`           | one-time-passcode generation/validation helpers                |
 | `queue`         | enqueue + task registration contract (asynq)                   |
+| `pubsub`        | publish/subscribe broadcast contract (`Publisher`, `Registrar`)|
 | `schedule`      | periodic-job contract (`Job`, `JobHandler`, `Registrar`)       |
 | `sms`           | SMS contract                                                    |
 | `storage`       | object-storage contract (write, read, delete, presign)         |

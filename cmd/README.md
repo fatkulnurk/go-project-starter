@@ -9,14 +9,16 @@ here — only dependency wiring.
 
 | Command     | Purpose                                                                  |
 | ----------- | ------------------------------------------------------------------------ |
-| `api`       | HTTP API server (port `APP_PORT`, default 8080). Mounts auth and RBAC  |
+| `api`       | HTTP API server (port `APP_PORT`, default 32100). Mounts auth and RBAC    |
 |             | routes plus `/assets/*` static files.                                 |
-| `web`       | Public web server (port `WEB_PORT`, default 8081). Serves the homepage   |
+| `web`       | Public web server (port `WEB_PORT`, default 32101). Serves the homepage   |
 |             | landing page and `/assets/*` static files.                               |
 | `worker`    | Queue worker. Processes async tasks enqueued by the API (email/SMS       |
 |             | delivery, etc.).                                                         |
 | `scheduler` | Periodic-job runner. Executes the scheduled jobs registered by modules   |
 |             | (e.g. the homepage "tick" demo, logging the time every minute).          |
+| `subscriber`| Pub/sub consumer. Runs the topic handlers registered by modules (e.g.    |
+|             | the homepage "app.demo.ping" demo) against the configured broker.         |
 | `migrate`   | Migration CLI. Applies/reverts the SQL migrations in `migrations/`.      |
 | `seed`      | One-off seeder (like `artisan db:seed`). Creates the default roles/      |
 |             | permissions and demo users defined in the module seeder packages         |
@@ -36,6 +38,9 @@ go run ./cmd/worker
 
 # Scheduler (periodic jobs)
 go run ./cmd/scheduler
+
+# Subscriber (pub/sub consumer) — needs a broker (PUBSUB_DRIVER)
+go run ./cmd/subscriber
 
 # Migrations
 go run ./cmd/migrate up

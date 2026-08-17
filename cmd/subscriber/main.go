@@ -1,6 +1,7 @@
-// Package main is the scheduler composition root: it runs the periodic jobs
-// registered by modules (e.g. the homepage "tick" demo) in their own binary,
-// independent from the API and the queue worker.
+// Package main is the subscriber composition root: it runs the pub/sub
+// subscribers registered by modules (e.g. the homepage "app.demo.ping" demo)
+// in their own binary, independent from the API and the queue worker. Unlike
+// the worker it needs no database — every pub/sub broker is external.
 package main
 
 import (
@@ -14,13 +15,12 @@ import (
 	"github.com/fatkulnurk/go-project-starter/internal/platform/config"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/logger"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/pubsub"
-	"github.com/fatkulnurk/go-project-starter/internal/platform/schedule"
 	_ "time/tzdata" // embed IANA timezone data so APP_TIMEZONE works anywhere
 )
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("scheduler", "err", err)
+		slog.Error("subscriber", "err", err)
 		os.Exit(1)
 	}
 }
@@ -33,15 +33,12 @@ func run() error {
 	log := logger.New(cfg.Environment)
 	slog.SetDefault(log)
 
-	clk := clock.Real{Loc: cfg.Location()}
-
-	scheduler := schedule.New(log, cfg.Location())
-
-	publisher, err := pubsub.NewClient(cfg.PubSub, log)
+	subscriber, err := pubsub.NewServer(cfg.PubSub, log)
 	if err != nil {
 		return err
 	}
-	defer publisher.Close()
+
+	clk := clock.Real{Loc: cfg.Location()}
 
 	homepageModule := homepage.New(homepage.Dependencies{
 		Settings: homepage.Settings{
@@ -50,21 +47,20 @@ func run() error {
 			AssetsBaseURL: cfg.AssetsBaseURLOrDefault(),
 			Year:          clk.Now().Year(),
 		},
-		Publisher: publisher,
 	})
-	homepageModule.RegisterSchedule(scheduler)
+	homepageModule.RegisterPubSub(subscriber)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
-		scheduler.Stop()
+		subscriber.Stop()
 	}()
 
-	log.Info("scheduler started", "env", cfg.Environment)
-	if err := scheduler.Run(); err != nil {
+	log.Info("subscriber started", "env", cfg.Environment, "driver", cfg.PubSub.Driver)
+	if err := subscriber.Run(); err != nil {
 		return err
 	}
-	log.Info("scheduler stopped")
+	log.Info("subscriber stopped")
 	return nil
 }

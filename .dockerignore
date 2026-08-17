@@ -1,0 +1,8 @@
+.git
+.env
+.env.*
+!.env.example
+storage
+*_test.go
+*.md
+Makefile

@@ -5,9 +5,9 @@ deployable binary, isolated business modules, and explicit dependencies
 between modules.
 
 ```text
-cmd/                    entry points / binaries (api, web, worker, migrate)
+cmd/                    entry points / binaries (api, web, worker, scheduler, subscriber, migrate, seed)
 internal/platform/      technical infrastructure (how the system does something)
-internal/application/   cross-cutting capabilities (contracts: auth, cache, queue, storage, mailer, sms, ...)
+internal/application/   cross-cutting capabilities (contracts: auth, cache, queue, pubsub, storage, mailer, sms, ...)
 internal/modules/       business modules (what the business does)
 migrations/             SQL migrations (MySQL & PostgreSQL compatible)
 storage/                local storage root for the `local` storage driver
@@ -21,14 +21,16 @@ Each layer has a README describing what belongs there — see
 
 ## Binaries (`cmd/`)
 
-| Command     | Purpose                                                              |
-| ----------- | -------------------------------------------------------------------- |
-| `api`       | HTTP API server (`APP_PORT`) — auth, media, RBAC routes + `/assets/*`|
-| `web`       | Public web server (`WEB_PORT`) — homepage landing page + `/assets/*` |
-| `worker`    | Queue worker — processes email/SMS tasks enqueued by the API         |
-| `migrate`   | Migration CLI — applies/reverts `migrations/` (`up`, `down`, `version`) |
-| `seed`      | One-off seeder (like `artisan db:seed`) — creates default roles/     |
-|             | permissions and demo users defined in the module seeder packages      |
+| Command       | Purpose                                                              |
+| ------------- | -------------------------------------------------------------------- |
+| `api`         | HTTP API server (`APP_PORT`, default 32100) — auth, media, RBAC routes + `/assets/*` |
+| `web`         | Public web server (`WEB_PORT`, default 32101) — homepage + `/assets/*` |
+| `worker`      | Queue worker — processes email/SMS tasks enqueued by the API         |
+| `scheduler`   | Periodic-job runner (`cmd/scheduler`) — cron jobs registered by modules |
+| `subscriber`  | Pub/sub consumer (`cmd/subscriber`) — topic handlers against the configured broker |
+| `migrate`     | Migration CLI — applies/reverts `migrations/` (`up`, `down`, `version`) |
+| `seed`        | One-off seeder (like `artisan db:seed`) — creates default roles/     |
+|               | permissions and demo users defined in the module seeder packages      |
 
 The API and worker share the same modules; email/SMS are enqueued by the API
 and delivered by the worker. The web binary serves the public homepage
@@ -60,6 +62,12 @@ independently on its own port.
     or direct object URLs)
 - **Queue** — hibiken/asynq (Redis). Emails/SMS are enqueued by the API and
   sent by a separate worker (`cmd/worker`).
+- **Pub/Sub** — broadcast events across processes. Contract in
+  `internal/application/pubsub`, brokers in `internal/platform/pubsub`:
+  `memory` (in-process), `redis` (fire-and-forget), `rabbitmq` (durable, ack),
+  `kafka` (durable log, consumer-group fan-out). Demo: `cmd/scheduler` publishes
+  `app.demo.ping` every minute → `cmd/subscriber` logs it. Unlike the queue,
+  every subscriber receives every message and there is no retry.
 - **Mailer** — drivers: `log`, `smtp`, `ses` (Amazon SESv2). Supports text,
   HTML and **attachments**.
 - **SMS** — drivers: `log`, `twilio`.
@@ -91,22 +99,41 @@ literals live in constants (see `config`, `permission`, the DTO files).
 
 ## Quick start
 
-1. Copy `.env.example` to `.env` and set `DB_*`, `REDIS_ADDR`, and the auth
-   secret. Default mail/SMS drivers are `log` so the starter runs with no
-   external credentials.
-2. Start MySQL and Redis, then:
+The fastest path is the included Docker Compose stack (MySQL, Redis, and the
+RabbitMQ/Kafka brokers behind a profile), which builds and runs every binary
+for you:
+
+```sh
+docker compose up -d            # mysql + redis + api + web + worker + scheduler + subscriber
+docker compose --profile brokers up -d   # + rabbitmq + kafka
+```
+
+This applies migrations and seeds automatically, then serves the API at
+`http://localhost:32100` and the web front at `http://localhost:32101`. To
+watch the pub/sub demo, follow the logs of the scheduler and subscriber.
+
+Alternatively, run locally against your own MySQL/Redis. Copy `.env.example`
+to `.env` — every binary auto-loads it via `config.Load()` (real environment
+variables always win over the file, so docker-compose/CI secrets keep
+precedence):
 
 ```sh
 go mod tidy
 go run ./cmd/migrate up
 go run ./cmd/seed         # create default roles/permissions + demo users
-go run ./cmd/api
-go run ./cmd/worker   # separate terminal — processes email/SMS tasks
-go run ./cmd/web      # optional — public homepage on WEB_PORT
+go run ./cmd/api          # http://localhost:32100
+go run ./cmd/worker       # separate terminal — processes email/SMS tasks
+go run ./cmd/web          # optional — public homepage on http://localhost:32101
+go run ./cmd/scheduler    # optional — cron jobs + publishes the pub/sub demo
+go run ./cmd/subscriber   # optional — logs pub/sub demo events (needs a broker)
 ```
 
-3. In development (`APP_ENV=development`) OTP codes and magic links are
-   returned in the API responses so you can exercise the flows end-to-end.
+The pub/sub demo needs a broker (`PUBSUB_DRIVER=redis|rabbitmq|kafka`) for the
+two binaries to talk; `memory` is in-process only. See
+`internal/platform/pubsub/README.md`.
+
+In development (`APP_ENV=development`) OTP codes and magic links are returned
+in the API responses so you can exercise the flows end-to-end.
 
 ## API
 
@@ -181,4 +208,5 @@ module code stays unchanged.
 - `MAIL_DRIVER=log|smtp|ses`
 - `SMS_DRIVER=log|twilio`
 - `QUEUE_DRIVER=asynq|db`
+- `PUBSUB_DRIVER=memory|redis|rabbitmq|kafka`
 - `RBAC_CACHE_TTL`

@@ -1,4 +1,4 @@
-.PHONY: build vet test test-integration lint arch check run-api run-worker run-scheduler fmt
+.PHONY: build vet test test-integration lint arch check run-api run-worker run-scheduler run-subscriber fmt
 
 build:
 	go build ./...
@@ -40,3 +40,6 @@ run-worker:
 
 run-scheduler:
 	go run ./cmd/scheduler
+
+run-subscriber:
+	go run ./cmd/subscriber

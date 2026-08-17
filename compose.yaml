@@ -1,0 +1,201 @@
+name: go-project-starter
+
+# Shared environment for every application binary. Host ports follow the 321xx
+# scheme: api 32100, web 32101, mysql 32110, redis 32120, rabbitmq 32130 (mgmt
+# 32131), kafka 32140. Services connect to each other over the compose network
+# by service name (mysql:3306, redis:6379, ...).
+#
+# PUBSUB_DRIVER=redis makes the scheduler -> subscriber demo work end-to-end
+# out of the box. To use RabbitMQ or Kafka instead, enable the brokers profile
+# and switch PUBSUB_DRIVER (+ PUBSUB_RABBITMQ_URL / PUBSUB_KAFKA_BROKERS to the
+# in-network addresses below).
+x-app-env: &app-env
+  APP_ENV: development
+  APP_BASE_URL: http://localhost:32100
+  APP_NAME: Go Project Starter
+  APP_TIMEZONE: UTC
+
+  DB_DRIVER: mysql
+  DB_HOST: mysql
+  DB_PORT: 3306
+  DB_USER: root
+  DB_PASSWORD: password
+  DB_NAME: go_project_starter
+
+  CACHE_DRIVER: redis
+  REDIS_ADDR: redis:6379
+
+  QUEUE_DRIVER: asynq
+  QUEUE_REDIS_DB: 1
+
+  PUBSUB_DRIVER: redis
+  PUBSUB_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+  PUBSUB_KAFKA_BROKERS: kafka:9092
+
+  STORAGE_DRIVER: local
+  STORAGE_LOCAL_DIR: /app/storage
+  PUBLIC_DIR: /app/public
+
+  MAIL_DRIVER: log
+  SMS_DRIVER: log
+  AUTH_JWT_SECRET: change-me-in-production-go-project-starter
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: go_project_starter
+    ports:
+      - "32110:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "32120:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    profiles: ["brokers"]
+    ports:
+      - "32130:5672"
+      - "32131:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  kafka:
+    image: apache/kafka:3.8.0
+    profiles: ["brokers"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "32140:9092"
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  migrate:
+    image: go-project-starter:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["migrate", "up"]
+    environment: *app-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  seed:
+    image: go-project-starter:latest
+    command: ["seed"]
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    image: go-project-starter:latest
+    command: ["api"]
+    environment: *app-env
+    ports:
+      - "32100:32100"
+    volumes:
+      - storage-data:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  web:
+    image: go-project-starter:latest
+    command: ["web"]
+    environment: *app-env
+    ports:
+      - "32101:32101"
+    volumes:
+      - storage-data:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  worker:
+    image: go-project-starter:latest
+    command: ["worker"]
+    environment: *app-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  scheduler:
+    image: go-project-starter:latest
+    command: ["scheduler"]
+    environment: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  subscriber:
+    image: go-project-starter:latest
+    command: ["subscriber"]
+    environment: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:
+  kafka-data:
+  storage-data:

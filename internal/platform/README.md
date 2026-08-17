@@ -22,6 +22,7 @@ driver per environment; modules only ever see the interface.
 | `logger`            | structured logging (slog) setup                                    |
 | `mailer`            | `mailer.MailSender` implementations: `log`, `smtp` (pooled), `ses` + MIME; shared email layout (`NewEmailLayout`) |
 | `queue`             | asynq client/server glue behind `queue.Enqueuer`                   |
+| `pubsub`            | pub/sub backends behind `pubsub.Publisher`/`Registrar`: `memory`, `redis`, `rabbitmq`, `kafka` + factory |
 | `schedule`          | stdlib ticker scheduler behind `schedule.Registrar`                 |
 | `sms`               | `sms.Sender` implementations: `log`, `twilio`                      |
 | `storage`           | `storage.Storage` implementations: `local`, `s3` + factory         |
