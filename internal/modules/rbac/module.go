@@ -54,18 +54,26 @@ func New(deps Dependencies) *Module {
 	if deps.Cache != nil {
 		pcache = rbaccache.NewPermissionCache(deps.Cache, deps.CacheTTL)
 	}
+	// Build the bumper as a plain interface: a typed-nil *PermissionCache
+	// wrapped in a CacheBumper interface is NOT nil, which would make the
+	// bump* guards below call Bump on a nil receiver. Converting it here
+	// keeps a missing cache a real nil so the guards no-op.
+	var bumper command.CacheBumper
+	if pcache != nil {
+		bumper = pcache
+	}
 
 	createRole := command.NewCreateRole(roles, deps.Auditor)
 	createPermission := command.NewCreatePermission(permissions, deps.Auditor)
-	updateRole := command.NewUpdateRole(roles, pcache, deps.Auditor)
-	deleteRole := command.NewDeleteRole(roles, pcache, deps.Auditor)
-	updatePermission := command.NewUpdatePermission(permissions, pcache, deps.Auditor)
-	deletePermission := command.NewDeletePermission(permissions, pcache, deps.Auditor)
-	assignRole := command.NewAssignRole(roles, access, pcache, deps.Auditor)
-	revokeRole := command.NewRevokeRole(roles, access, pcache, deps.Auditor)
-	grantPermission := command.NewGrantPermission(permissions, access, pcache, deps.Auditor)
-	revokePermission := command.NewRevokePermission(permissions, access, pcache, deps.Auditor)
-	syncRolePermissions := command.NewSyncRolePermissions(roles, permissions, pcache, deps.Auditor)
+	updateRole := command.NewUpdateRole(roles, bumper, deps.Auditor)
+	deleteRole := command.NewDeleteRole(roles, bumper, deps.Auditor)
+	updatePermission := command.NewUpdatePermission(permissions, bumper, deps.Auditor)
+	deletePermission := command.NewDeletePermission(permissions, bumper, deps.Auditor)
+	assignRole := command.NewAssignRole(roles, access, bumper, deps.Auditor)
+	revokeRole := command.NewRevokeRole(roles, access, bumper, deps.Auditor)
+	grantPermission := command.NewGrantPermission(permissions, access, bumper, deps.Auditor)
+	revokePermission := command.NewRevokePermission(permissions, access, bumper, deps.Auditor)
+	syncRolePermissions := command.NewSyncRolePermissions(roles, permissions, bumper, deps.Auditor)
 	getUser := query.NewGetUser(access, pcache)
 	getRole := query.NewGetRole(roles)
 
@@ -93,7 +101,7 @@ func New(deps Dependencies) *Module {
 		authz:       &Authorizer{svc: svc},
 		roles:       roles,
 		permissions: permissions,
-		bumper:      pcache,
+		bumper:      bumper,
 		auditor:     deps.Auditor,
 	}
 }
