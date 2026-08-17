@@ -34,7 +34,7 @@ func run() error {
 
 	clk := clock.Real{Loc: cfg.Location()}
 
-	scheduler := schedule.New(log)
+	scheduler := schedule.New(log, cfg.Location())
 
 	homepageModule := homepage.New(homepage.Dependencies{
 		Settings: homepage.Settings{

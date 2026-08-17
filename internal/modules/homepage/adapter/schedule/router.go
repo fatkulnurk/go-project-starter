@@ -4,8 +4,6 @@
 package schedule
 
 import (
-	"time"
-
 	appschedule "github.com/fatkulnurk/go-project-starter/internal/application/schedule"
 )
 
@@ -14,8 +12,8 @@ import (
 // real recurring work as the module grows.
 func Register(r appschedule.Registrar) {
 	r.Register(appschedule.Job{
-		Name:     "homepage.tick",
-		Interval: time.Minute,
-		Handler:  tick,
+		Name:    "homepage.tick",
+		Cron:    "* * * * *",
+		Handler: tick,
 	})
 }

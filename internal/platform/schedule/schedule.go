@@ -1,6 +1,3 @@
-// Package schedule provides the scheduled-jobs backend behind the
-// internal/application/schedule contract. Business modules only register jobs;
-// the concrete scheduling loop (stdlib time.Ticker) is hidden behind Worker.
 package schedule
 
 import (
@@ -28,44 +25,57 @@ type Worker interface {
 	Stop()
 }
 
-// New builds a stdlib time.Ticker backed scheduler. log receives handler
+// New builds a stdlib-backed cron scheduler. loc is the timezone in which
+// cron expressions are evaluated (pass cfg.Location()); log receives handler
 // failures and invalid registrations.
-func New(log *slog.Logger) Worker {
+func New(log *slog.Logger, loc *time.Location) Worker {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &tickerWorker{log: log, jobs: make(map[string]appschedule.Job), done: make(chan struct{})}
+	if loc == nil {
+		loc = time.UTC
+	}
+	return &cronWorker{log: log, loc: loc, jobs: make(map[string]registeredJob), done: make(chan struct{})}
 }
 
-// tickerWorker runs one goroutine per registered job, ticking at the job's
-// Interval until the scheduler stops.
-type tickerWorker struct {
+// registeredJob pairs a registered job with its compiled cron expression.
+type registeredJob struct {
+	appschedule.Job
+	spec *Spec
+}
+
+// cronWorker runs one goroutine per registered job, waking at every minute
+// boundary (in its location) and running the handler when the cron expression
+// matches, until the scheduler stops.
+type cronWorker struct {
 	log      *slog.Logger
+	loc      *time.Location
 	mu       sync.Mutex
-	jobs     map[string]appschedule.Job
+	jobs     map[string]registeredJob
 	done     chan struct{}
 	stopOnce sync.Once
 }
 
-// Register implements schedule.Registrar. A non-positive interval disables the
-// job with a logged error. Registering the same name twice replaces the
-// previous job's schedule.
-func (w *tickerWorker) Register(j appschedule.Job) {
-	if j.Interval <= 0 {
-		w.log.Error("invalid schedule interval, job disabled", "job", j.Name, "interval", j.Interval.String())
+// Register implements schedule.Registrar. An invalid cron expression disables
+// the job with a logged error. Registering the same name twice replaces the
+// previous job.
+func (w *cronWorker) Register(j appschedule.Job) {
+	spec, err := Parse(j.Cron)
+	if err != nil {
+		w.log.Error("invalid cron expression, job disabled", "job", j.Name, "cron", j.Cron, "err", err)
 		return
 	}
 	w.mu.Lock()
-	w.jobs[j.Name] = j
+	w.jobs[j.Name] = registeredJob{Job: j, spec: spec}
 	w.mu.Unlock()
 }
 
 // Run implements Worker. It snapshots the registered jobs, starts a goroutine
 // per job, then blocks until Stop cancels the shared context. Each handler
 // runs with a cancellable context so a graceful shutdown aborts in-flight work.
-func (w *tickerWorker) Run() error {
+func (w *cronWorker) Run() error {
 	w.mu.Lock()
-	jobs := make([]appschedule.Job, 0, len(w.jobs))
+	jobs := make([]registeredJob, 0, len(w.jobs))
 	for _, j := range w.jobs {
 		jobs = append(jobs, j)
 	}
@@ -77,9 +87,9 @@ func (w *tickerWorker) Run() error {
 	var wg sync.WaitGroup
 	for _, j := range jobs {
 		wg.Add(1)
-		go func(j appschedule.Job) {
+		go func(j registeredJob) {
 			defer wg.Done()
-			w.tick(j, ctx)
+			w.loop(ctx, j)
 		}(j)
 	}
 
@@ -89,17 +99,15 @@ func (w *tickerWorker) Run() error {
 	return nil
 }
 
-// tick runs the job handler once per Interval until ctx is cancelled.
-// Handler errors are logged, not propagated, so one failing job never stops
-// the scheduler or its siblings.
-func (w *tickerWorker) tick(j appschedule.Job, ctx context.Context) {
-	t := time.NewTicker(j.Interval)
-	defer t.Stop()
+// loop wakes at the start of every minute in w.loc and runs the handler when
+// the job's cron expression matches that minute.
+func (w *cronWorker) loop(ctx context.Context, j registeredJob) {
 	for {
-		select {
-		case <-ctx.Done():
+		if !w.sleepUntilNextMinute(ctx) {
 			return
-		case <-t.C:
+		}
+		now := time.Now().In(w.loc)
+		if j.spec.Match(now) {
 			if err := j.Handler(ctx); err != nil {
 				w.log.Error("scheduled job failed", "job", j.Name, "err", err)
 			}
@@ -107,9 +115,25 @@ func (w *tickerWorker) tick(j appschedule.Job, ctx context.Context) {
 	}
 }
 
+// sleepUntilNextMinute sleeps until the start of the next minute in w.loc. It
+// returns false if ctx is cancelled before the timer fires.
+func (w *cronWorker) sleepUntilNextMinute(ctx context.Context) bool {
+	now := time.Now().In(w.loc)
+	next := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, w.loc).Add(time.Minute)
+
+	timer := time.NewTimer(time.Until(next))
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 // Stop implements Worker. It is safe to call multiple times and from any
 // goroutine; the first call unblocks Run.
-func (w *tickerWorker) Stop() {
+func (w *cronWorker) Stop() {
 	w.stopOnce.Do(func() {
 		close(w.done)
 	})

@@ -1,19 +1,19 @@
 // Package schedule defines the cross-cutting scheduled-jobs contract. Business
-// modules register periodic jobs and the concrete backend (ticker, cron,
+// modules register periodic jobs and the concrete backend (cron parser, ticker,
 // others) is hidden behind Registrar.
 package schedule
 
 import (
 	"context"
-	"time"
 )
 
-// Job is a unit of periodic work. Name identifies the job in logs; Interval
-// is how often Handler runs; Handler performs the actual work.
+// Job is a unit of periodic work. Name identifies the job in logs; Cron is a
+// 5-field cron expression (`minute hour day-of-month month day-of-week`, e.g.
+// "0 3 * * FRI" for every Friday at 03:00) telling when Handler runs.
 type Job struct {
-	Name     string
-	Interval time.Duration
-	Handler  JobHandler
+	Name    string
+	Cron    string
+	Handler JobHandler
 }
 
 // JobHandler runs a single execution of a job. The context is cancelled when
