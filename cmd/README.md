@@ -15,6 +15,8 @@ here — only dependency wiring.
 |             | landing page and `/assets/*` static files.                               |
 | `worker`    | Queue worker. Processes async tasks enqueued by the API (email/SMS       |
 |             | delivery, etc.).                                                         |
+| `scheduler` | Periodic-job runner. Executes the scheduled jobs registered by modules   |
+|             | (e.g. the homepage "tick" demo, logging the time every minute).          |
 | `migrate`   | Migration CLI. Applies/reverts the SQL migrations in `migrations/`.      |
 | `seed`      | One-off seeder (like `artisan db:seed`). Creates the default roles/      |
 |             | permissions and demo users defined in the module seeder packages         |
@@ -31,6 +33,9 @@ go run ./cmd/web
 
 # Worker
 go run ./cmd/worker
+
+# Scheduler (periodic jobs)
+go run ./cmd/scheduler
 
 # Migrations
 go run ./cmd/migrate up

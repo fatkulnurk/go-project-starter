@@ -1,7 +1,9 @@
 package homepage
 
 import (
+	appschedule "github.com/fatkulnurk/go-project-starter/internal/application/schedule"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapter/api"
+	scheduleadapter "github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapter/schedule"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/adapter/web"
 	"github.com/fatkulnurk/go-project-starter/internal/modules/homepage/application"
 	"github.com/fatkulnurk/go-project-starter/internal/platform/view"
@@ -65,4 +67,10 @@ func (m *Module) RegisterAPI(r chi.Router) {
 			Year:          m.settings.Year,
 		},
 	})
+}
+
+// RegisterSchedule registers the module's periodic jobs on a scheduler. Today
+// this is the demo "homepage.tick" job that logs the current time every minute.
+func (m *Module) RegisterSchedule(r appschedule.Registrar) {
+	scheduleadapter.Register(r)
 }
