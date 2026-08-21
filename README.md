@@ -1,5 +1,8 @@
 # Go Project Starter
 
+> **Status: Under active development — not production ready.**
+> APIs, schema, and directory layout may change without notice.
+
 A starter Go project following the **modular monolith** architecture: one
 deployable binary, isolated business modules, and explicit dependencies
 between modules.
