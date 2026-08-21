@@ -19,6 +19,167 @@ Each layer has a README describing what belongs there — see
 `internal/application/README.md`, `internal/modules/README.md`,
 `migrations/README.md`, and `storage/README.md`.
 
+## Architecture
+
+The codebase follows a **layered modular monolith** with strict dependency
+rules enforced by `go-arch-lint` (`arch.yaml`) and a grep check in
+`make check`.
+
+### Layers (inside-out)
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  cmd/                  composition root (wires everything)  │
+├─────────────────────────────────────────────────────────────┤
+│  adapter/              HTTP, CLI, schedule, pubsub handlers │
+├─────────────────────────────────────────────────────────────┤
+│  application/          use cases (commands + queries)       │
+├─────────────────────────────────────────────────────────────┤
+│  domain/               entities, repository interfaces      │
+├─────────────────────────────────────────────────────────────┤
+│  infrastructure/       SQL, Redis, external SDK impls      │
+└─────────────────────────────────────────────────────────────┘
+
+Cross-cutting contracts live in internal/application/ (auth, cache,
+queue, pubsub, storage, media, mailer, sms, ...).
+Technical drivers live in internal/platform/ (database, cache, queue,
+pubsub, storage, mailer, sms, http, clock, token, hash, logger, ...).
+```
+
+### Dependency rules
+
+| Layer | May import |
+|-------|-----------|
+| `domain` | only `application/apierr` (sentinel errors) |
+| `application` (use cases) | `domain` + `application/*` contracts + `platform/clock` |
+| `infrastructure` | `domain` + `application/*` + `platform/*` |
+| `adapter` | its own `application` + `application/*` + `platform/http` |
+| `cmd` (composition root) | everything — it wires modules, platform, and adapters |
+
+**Cross-module rule:** modules may only import each other through their
+package root (`module.API` / `module.Service`), never through internal
+sub-packages (`domain`, `application`, `infrastructure`, `adapter`). This is
+enforced by `make check`.
+
+### Composition root
+
+Each binary under `cmd/` is a thin main that:
+1. Loads config (`config.Load()`)
+2. Opens infrastructure (DB, Redis, cache, queue, pubsub, storage, mailer, SMS)
+3. Instantiates modules with their dependencies
+4. Mounts HTTP routes (chi router) and starts the server/worker/scheduler
+
+No business logic lives in `cmd/` — it only delegates.
+
+### CQRS
+
+The application layer follows **CQRS** (Command Query Responsibility
+Segregation): every state change is a **command**, every read is a **query**.
+Both live under `internal/modules/*/application/` in separate packages.
+
+```text
+internal/modules/{module}/
+  domain/              entities, repository interfaces
+  application/
+    command/           write-side use cases (one file per command)
+    query/             read-side use cases (one file per query)
+    port/              outbound port interfaces for cross-module deps
+  infrastructure/      repository implementations (SQL, cache, ...)
+  adapter/             HTTP, schedule, pubsub, queue handlers
+```
+
+#### Command (write side)
+
+Each command is a file with three elements:
+
+1. **Command struct** — plain data carrying the input
+2. **Result struct** — what the command returns (optional)
+3. **Use-case struct** — holds injected deps, exposes `Execute`
+
+```go
+// command/register.go
+
+type RegisterCommand struct {
+    Name, Email, Phone, Password string
+}
+
+type RegisterResult struct {
+    UserID       string
+    DevEmailCode string
+}
+
+type Register struct {
+    users  domain.UserRepository
+    hasher hash.PasswordHasher
+    // ... injected dependencies
+}
+
+func (uc *Register) Execute(ctx context.Context, cmd RegisterCommand) (*RegisterResult, error) {
+    // validation, business logic, persistence, audit
+}
+```
+
+Commands that return no meaningful data return only `error`:
+
+```go
+func (uc *Logout) Execute(ctx context.Context, cmd LogoutCommand) error { ... }
+```
+
+#### Query (read side)
+
+Queries take **primitive parameters** instead of a command struct, and the
+receiver is `q` instead of `uc`:
+
+```go
+// query/profile.go
+
+type Profile struct {
+    users domain.UserRepository
+    roles port.Roles
+}
+
+func (q *Profile) Execute(ctx context.Context, userID string) (*ProfileResult, error) {
+    user, err := q.users.FindByID(ctx, userID)
+    // ...
+}
+```
+
+#### Convention summary
+
+| Aspect | Command | Query |
+|--------|---------|-------|
+| Package | `application/command/` | `application/query/` |
+| Input | named struct (`RegisterCommand`) | primitive params (`userID string`) |
+| Receiver | `uc` | `q` |
+| Method | `Execute(ctx, cmd) → (*Result, error)` | `Execute(ctx, params...) → (*Result, error)` |
+| Constructor | `NewRegister(deps...) *Register` | `NewProfile(deps...) *Profile` |
+
+#### Adapter layer
+
+Handlers in `adapter/api/` translate HTTP → command/query → HTTP:
+
+```go
+func (h *handler) register(w http.ResponseWriter, r *http.Request) {
+    var req registerRequest
+    if err := decodeJSON(w, r, &req); err != nil { return }
+
+    res, err := h.deps.Register.Execute(r.Context(), command.RegisterCommand{
+        Name: req.Name, Email: req.Email,
+    })
+    if err != nil { writeError(w, err); return }
+    writeSuccess(w, http.StatusCreated, res)
+}
+```
+
+Every adapter receives a `Deps` struct bundling all its use-case pointers
+by reference — no business logic, no SQL, just request → use-case → response.
+
+#### Wiring
+
+`module.go` constructs repositories, builds every command/query, and
+assembles them into the public `API` struct. The composition root
+(`cmd/api/main.go`) calls `module.New(deps)` then `module.RegisterAPI(router)`.
+
 ## Binaries (`cmd/`)
 
 | Command       | Purpose                                                              |
@@ -44,6 +205,14 @@ independently on its own port.
   - **Magic link login** — no password needed: request a one-time link, click it, get tokens
   - Forgot / reset password
   - Access token (JWT, carries roles) + rotating refresh token, logout, `GET /me`
+  - **MFA / TOTP** — setup, confirm, disable authenticator; recovery codes for
+    backup; `POST /mfa/verify` during login when TOTP is active
+  - **Session management** — family-based refresh tokens with max-session cap
+    (`AUTH_MAX_SESSIONS`); list sessions, revoke individual sessions
+  - **Profile updates** — change name; changing email/phone records a pending
+    change + issues a new OTP (applied on verify)
+  - **Password change** — separate endpoint (`POST /me/password`) for
+    authenticated users
 - **RBAC module** (`internal/modules/rbac`) — Spatie-permissions-style
   - Roles and permissions tables (`roles`, `permissions`, `role_permissions`,
     `user_roles`, `user_permissions`)
@@ -53,6 +222,10 @@ independently on its own port.
   - Versioned permission cache (redis/memory) — changes propagate within `RBAC_CACHE_TTL`
   - `platform/http.RequirePermission(authorizer, "rbac.manage")` middleware
   - Admin API to manage roles, permissions, and user assignments
+- **Homepage module** (`internal/modules/homepage`) — demo module with all
+  four adapter types: API (`GET /` JSON branding), Web (HTML welcome page),
+  Schedule (`homepage.tick` cron job → publishes `app.demo.ping`),
+  PubSub (subscribes to `app.demo.ping`)
 - **Media library** — Laravel media-library-style cross-cutting capability
   - Contract in `internal/application/media` (`media.Library`), implemented in
     `internal/platform/media`
@@ -60,8 +233,9 @@ independently on its own port.
   - Callable from any module: `AddMedia`, `GetMedia`, `ListByModel`,
     `RemoveMedia`, `URL` (backs onto `internal/application/storage` for signed
     or direct object URLs)
-- **Queue** — hibiken/asynq (Redis). Emails/SMS are enqueued by the API and
-  sent by a separate worker (`cmd/worker`).
+- **Queue** — backends: `asynq` (Redis, default) or `db` (database table,
+  `queue_jobs`). Emails/SMS are enqueued by the API and sent by a separate
+  worker (`cmd/worker`).
 - **Pub/Sub** — broadcast events across processes. Contract in
   `internal/application/pubsub`, brokers in `internal/platform/pubsub`:
   `memory` (in-process), `redis` (fire-and-forget), `rabbitmq` (durable, ack),
@@ -77,7 +251,11 @@ independently on its own port.
   web servers. Email HTML and web templates reference them via `ASSETS_BASE_URL`
   (defaults to `APP_BASE_URL`, can point at a CDN). Put `logo.png` etc. in
   `public/assets/`.
-- **Cache** — drivers: `redis`, `memory`.
+- **Cache** — drivers: `redis`, `memory`, `db` (Laravel-style `cache` table).
+- **Audit logging** — immutable `audit_logs` table; every write is recorded
+  with actor type (`user`/`system`), action (`created`/`updated`/`deleted`),
+  and optional old/new JSON diffs. `platform/http.AuditActor` middleware
+  injects the actor; `platform/audit.RecordBestEffort()` writes best-effort.
 - **Database** — `mysql` (default) or `postgres`, driven by `database/sql`
   with portable SQL (`?` placeholders rebound for postgres).
 - **Migrations** — golang-migrate format, run via `cmd/migrate`.
@@ -145,35 +323,48 @@ in the API responses so you can exercise the flows end-to-end.
 
 ### Auth
 
-| Method | Path                      | Auth  | Description                       |
-|--------|---------------------------|-------|-----------------------------------|
-| POST   | `/api/v1/auth/register`   | —     | register, returns dev OTPs        |
-| POST   | `/api/v1/auth/login`      | —     | login (email/phone + password)    |
-| POST   | `/api/v1/auth/magic-link` | —     | request a magic login link        |
-| POST   | `/api/v1/auth/magic-link/verify` | — | exchange the token for credentials |
-| POST   | `/api/v1/auth/verify-email`  | —  | verify email with OTP (applies a pending email change) |
-| POST   | `/api/v1/auth/verify-phone`  | —  | verify phone with OTP (applies a pending phone change) |
-| POST   | `/api/v1/auth/forgot-password` | — | request a reset code             |
-| POST   | `/api/v1/auth/reset-password`  | — | reset password with code         |
-| POST   | `/api/v1/auth/refresh`     | —     | rotate refresh token              |
-| POST   | `/api/v1/auth/logout`      | Bearer | revoke refresh token            |
-| GET    | `/api/v1/auth/me`          | Bearer | current user profile + roles/permissions |
-| PATCH  | `/api/v1/auth/me`          | Bearer | update name; changing email/phone records a pending change + issues a new OTP (applied on verify) |
+| Method | Path                              | Auth  | Description                       |
+|--------|-----------------------------------|-------|-----------------------------------|
+| POST   | `/api/v1/auth/register`           | —     | register, returns dev OTPs        |
+| POST   | `/api/v1/auth/login`              | —     | login (email/phone + password)    |
+| POST   | `/api/v1/auth/mfa/verify`         | —     | verify TOTP code during login     |
+| POST   | `/api/v1/auth/magic-link`         | —     | request a magic login link        |
+| POST   | `/api/v1/auth/magic-link/verify`  | —     | exchange the token for credentials |
+| GET    | `/api/v1/auth/magic-link/verify`  | —     | magic link click (GET, for email links) |
+| POST   | `/api/v1/auth/verify-email`       | —     | verify email with OTP (applies a pending email change) |
+| POST   | `/api/v1/auth/verify-phone`       | —     | verify phone with OTP (applies a pending phone change) |
+| POST   | `/api/v1/auth/forgot-password`    | —     | request a reset code              |
+| POST   | `/api/v1/auth/reset-password`     | —     | reset password with code          |
+| POST   | `/api/v1/auth/refresh`            | —     | rotate refresh token              |
+| POST   | `/api/v1/auth/logout`             | Bearer | revoke refresh token              |
+| GET    | `/api/v1/auth/me`                 | Bearer | current user profile + roles/permissions |
+| PATCH  | `/api/v1/auth/me`                 | Bearer | update name; changing email/phone records a pending change + issues a new OTP (applied on verify) |
+| POST   | `/api/v1/auth/me/password`        | Bearer | change password (authenticated)   |
+| GET    | `/api/v1/auth/sessions`           | Bearer | list active sessions (refresh token families) |
+| DELETE | `/api/v1/auth/sessions/{familyID}`| Bearer | revoke a session/family          |
+| POST   | `/api/v1/auth/mfa/setup`          | Bearer | generate TOTP secret + provisioning URI |
+| POST   | `/api/v1/auth/mfa/confirm`        | Bearer | confirm TOTP setup with a valid code |
+| POST   | `/api/v1/auth/mfa/disable`        | Bearer | disable TOTP (requires current password) |
 
 ### RBAC (admin, requires `rbac.manage`)
 
-| Method | Path                                   | Description                |
-|--------|----------------------------------------|----------------------------|
-| GET    | `/api/v1/rbac/roles`                   | list roles                 |
-| POST   | `/api/v1/rbac/roles`                   | create role                |
-| GET    | `/api/v1/rbac/permissions`             | list permissions           |
-| POST   | `/api/v1/rbac/permissions`             | create permission          |
-| PUT    | `/api/v1/rbac/roles/{name}/permissions`| replace a role's permissions |
-| GET    | `/api/v1/rbac/users/{userID}`          | user's roles/permissions   |
-| POST   | `/api/v1/rbac/users/{userID}/roles`    | assign role to user        |
-| DELETE | `/api/v1/rbac/users/{userID}/roles`    | revoke role from user      |
-| POST   | `/api/v1/rbac/users/{userID}/permissions` | grant direct permission  |
-| DELETE | `/api/v1/rbac/users/{userID}/permissions` | revoke direct permission|
+| Method | Path                                      | Description                |
+|--------|-------------------------------------------|----------------------------|
+| GET    | `/api/v1/rbac/roles`                      | list roles                 |
+| POST   | `/api/v1/rbac/roles`                      | create role                |
+| GET    | `/api/v1/rbac/roles/{code}`               | get role by code           |
+| PUT    | `/api/v1/rbac/roles/{code}`               | update role                |
+| DELETE | `/api/v1/rbac/roles/{code}`               | delete role                |
+| PUT    | `/api/v1/rbac/roles/{code}/permissions`   | sync a role's permissions  |
+| GET    | `/api/v1/rbac/permissions`                | list permissions           |
+| POST   | `/api/v1/rbac/permissions`                | create permission          |
+| PUT    | `/api/v1/rbac/permissions/{code}`         | update permission          |
+| DELETE | `/api/v1/rbac/permissions/{code}`         | delete permission          |
+| GET    | `/api/v1/rbac/users/{userID}`             | user's roles/permissions   |
+| POST   | `/api/v1/rbac/users/{userID}/roles`       | assign role to user        |
+| DELETE | `/api/v1/rbac/users/{userID}/roles`       | revoke role from user      |
+| POST   | `/api/v1/rbac/users/{userID}/permissions` | grant direct permission    |
+| DELETE | `/api/v1/rbac/users/{userID}/permissions` | revoke direct permission   |
 
 > The media library is a programmatic capability (see Features) — it has no
 > HTTP endpoints. Modules call `media.Library` directly; if you need to expose
