@@ -62,6 +62,13 @@ const (
 	envDBConnMaxIdleTime = "DB_CONN_MAX_IDLE_TIME"
 	envDBSSLMode         = "DB_SSL_MODE"
 
+	envDBReadHost     = "DB_READ_HOST"
+	envDBReadPort     = "DB_READ_PORT"
+	envDBReadUser     = "DB_READ_USER"
+	envDBReadPassword = "DB_READ_PASSWORD"
+	envDBReadName     = "DB_READ_NAME"
+	envDBReadSSLMode  = "DB_READ_SSL_MODE"
+
 	envCacheDriver       = "CACHE_DRIVER"
 	envRedisAddr         = "REDIS_ADDR"
 	envRedisPassword     = "REDIS_PASSWORD"
@@ -235,6 +242,7 @@ type Config struct {
 	CORSAllowedOrigins []string
 
 	Database DatabaseConfig
+	ReadDB   *DatabaseConfig // optional read replica; nil = use Database for reads
 	Cache    CacheConfig
 	Queue    QueueConfig
 	PubSub   PubSubConfig
@@ -585,6 +593,7 @@ func Load() (Config, error) {
 			SSLMode:         b.str(envDBSSLMode, defaultDBSSLMode),
 			TimeZone:        b.str(envAppTimeZone, defaultTimeZone),
 		},
+		ReadDB: readDBConfig(b),
 		Cache: CacheConfig{
 			Driver: b.str(envCacheDriver, defaultCacheDriver),
 			Redis:  redis,
@@ -682,6 +691,31 @@ func Load() (Config, error) {
 		return Config{}, errors.New(strings.Join(b.errs, "; "))
 	}
 	return cfg, nil
+}
+
+// readDBConfig builds an optional read-replica DatabaseConfig from DB_READ_*
+// env vars. Returns nil when DB_READ_HOST is empty, signalling that reads
+// should use the primary database connection.
+func readDBConfig(b *builder) *DatabaseConfig {
+	host := b.str(envDBReadHost, "")
+	if host == "" {
+		return nil
+	}
+	dbDriver := b.str(envDBDriver, defaultDBDriver)
+	return &DatabaseConfig{
+		Driver:          dbDriver,
+		Host:            host,
+		Port:            b.int(envDBReadPort, defaultDBPort),
+		User:            b.str(envDBReadUser, defaultDBUser),
+		Password:        b.str(envDBReadPassword, ""),
+		Name:            b.str(envDBReadName, defaultDBName),
+		MaxOpenConns:    b.int(envDBMaxOpenConns, defaultDBMaxOpenConns),
+		MaxIdleConns:    b.int(envDBMaxIdleConns, defaultDBMaxIdleConns),
+		ConnMaxLifetime: b.duration(envDBConnMaxLifetime, defaultDBConnMaxLifetime),
+		ConnMaxIdleTime: b.duration(envDBConnMaxIdleTime, defaultDBConnMaxIdleTime),
+		SSLMode:         b.str(envDBReadSSLMode, defaultDBSSLMode),
+		TimeZone:        b.str(envAppTimeZone, defaultTimeZone),
+	}
 }
 
 // validate returns a list of configuration problems, empty when valid.

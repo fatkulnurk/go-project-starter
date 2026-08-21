@@ -79,16 +79,53 @@ No business logic lives in `cmd/` — it only delegates.
 The application layer follows **CQRS** (Command Query Responsibility
 Segregation): every state change is a **command**, every read is a **query**.
 Both live under `internal/modules/*/application/` in separate packages.
+The data layer enforces this separation through split repository interfaces
+and optional read-replica support.
 
 ```text
 internal/modules/{module}/
-  domain/              entities, repository interfaces
+  domain/              entities, repository interfaces (Read + Write)
   application/
     command/           write-side use cases (one file per command)
     query/             read-side use cases (one file per query)
     port/              outbound port interfaces for cross-module deps
   infrastructure/      repository implementations (SQL, cache, ...)
   adapter/             HTTP, schedule, pubsub, queue handlers
+```
+
+#### Repository separation (CQRS at the data layer)
+
+Every domain repository is split into **read** and **write** interfaces:
+
+| Entity | Read Interface | Write Interface |
+|--------|---------------|-----------------|
+| User | `UserReadRepository` | `UserWriteRepository` |
+| RefreshToken | `RefreshTokenReadRepository` | `RefreshTokenWriteRepository` |
+| VerificationCode | `VerificationCodeReadRepository` | `VerificationCodeWriteRepository` |
+| PendingContactChange | `PendingContactChangeReadRepository` | `PendingContactChangeWriteRepository` |
+| Role | `RoleReadRepository` | `RoleWriteRepository` |
+| Permission | `PermissionReadRepository` | `PermissionWriteRepository` |
+| UserAccess | `UserAccessReadRepository` | `UserAccessWriteRepository` |
+
+Commands inject **write** interfaces; queries inject **read** interfaces.
+Infrastructure implementations satisfy both, but the dependency direction
+is explicit.
+
+#### Read replica support (optional)
+
+Point `DB_READ_HOST` (and friends) to a MySQL/PostgreSQL read replica.
+When set, all query-side reads route to the replica; writes always go to
+the primary. When unset, reads fall back to the primary — zero config
+change for existing users.
+
+```env
+# primary (writes + reads when no replica is configured)
+DB_HOST=localhost
+DB_PORT=3306
+
+# optional read replica (queries only)
+DB_READ_HOST=read-replica.example.com
+DB_READ_PORT=3306
 ```
 
 #### Command (write side)
@@ -112,7 +149,7 @@ type RegisterResult struct {
 }
 
 type Register struct {
-    users  domain.UserRepository
+    users  domain.UserWriteRepository // write-only interface
     hasher hash.PasswordHasher
     // ... injected dependencies
 }
@@ -137,7 +174,7 @@ receiver is `q` instead of `uc`:
 // query/profile.go
 
 type Profile struct {
-    users domain.UserRepository
+    users domain.UserReadRepository // read-only interface
     roles port.Roles
 }
 
@@ -156,6 +193,7 @@ func (q *Profile) Execute(ctx context.Context, userID string) (*ProfileResult, e
 | Receiver | `uc` | `q` |
 | Method | `Execute(ctx, cmd) → (*Result, error)` | `Execute(ctx, params...) → (*Result, error)` |
 | Constructor | `NewRegister(deps...) *Register` | `NewProfile(deps...) *Profile` |
+| Repo inject | write interface | read interface |
 
 #### Adapter layer
 
@@ -179,9 +217,10 @@ by reference — no business logic, no SQL, just request → use-case → respon
 
 #### Wiring
 
-`module.go` constructs repositories, builds every command/query, and
-assembles them into the public `API` struct. The composition root
-(`cmd/api/main.go`) calls `module.New(deps)` then `module.RegisterAPI(router)`.
+`module.go` constructs repositories (with `readDB` and `writeDB` pools),
+builds every command/query, and assembles them into the public `API`
+struct. The composition root (`cmd/api/main.go`) opens both DB pools and
+calls `module.New(deps)` then `module.RegisterAPI(router)`.
 
 ## Binaries (`cmd/`)
 
@@ -397,6 +436,8 @@ module code stays unchanged.
 - `ASSETS_BASE_URL` — absolute base URL for static assets used in email/web
   (empty = `APP_BASE_URL`, so it can point at a CDN).
 - `DB_DRIVER=mysql|postgres`
+- `DB_READ_HOST` — optional read replica host; when set, queries route here
+- `DB_READ_PORT`, `DB_READ_USER`, `DB_READ_PASSWORD`, `DB_READ_NAME`, `DB_READ_SSL_MODE`
 - `CACHE_DRIVER=redis|memory|db`
 - `STORAGE_DRIVER=local|s3`
 - `MAIL_DRIVER=log|smtp|ses`

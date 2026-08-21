@@ -3,6 +3,7 @@
 package main
 
 import (
+	"database/sql"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -48,6 +49,16 @@ func run() error {
 	}
 	defer db.Close()
 
+	// Open the optional read replica for the worker.
+	var readDB *sql.DB
+	if cfg.ReadDB != nil {
+		readDB, err = database.New(*cfg.ReadDB)
+		if err != nil {
+			return err
+		}
+		defer readDB.Close()
+	}
+
 	cacheClient, err := cache.New(cfg.Cache, db, cfg.Database.Driver)
 	if err != nil {
 		return err
@@ -82,6 +93,7 @@ func run() error {
 	devMode := cfg.Environment != config.EnvironmentProduction
 
 	authModule := auth.New(auth.Dependencies{
+		ReadDB:   readDB,
 		DB:       db,
 		DBDriver: cfg.Database.Driver,
 		Cache:    cacheClient,

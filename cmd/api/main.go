@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -62,6 +63,17 @@ func run() error {
 	}
 	defer db.Close()
 
+	// Open the optional read replica. When DB_READ_HOST is not set cfg.ReadDB
+	// is nil and readDB falls back to the primary pool.
+	var readDB *sql.DB
+	if cfg.ReadDB != nil {
+		readDB, err = database.New(*cfg.ReadDB)
+		if err != nil {
+			return err
+		}
+		defer readDB.Close()
+	}
+
 	cacheClient, err := cache.New(cfg.Cache, db, cfg.Database.Driver)
 	if err != nil {
 		return err
@@ -91,6 +103,7 @@ func run() error {
 
 	// --- modules ------------------------------------------------------------
 	rbacModule := rbac.New(rbac.Dependencies{
+		ReadDB:   readDB,
 		DB:       db,
 		DBDriver: cfg.Database.Driver,
 		Cache:    cacheClient,
@@ -108,6 +121,7 @@ func run() error {
 	}
 
 	authModule := auth.New(auth.Dependencies{
+		ReadDB:   readDB,
 		DB:       db,
 		DBDriver: cfg.Database.Driver,
 		Cache:    cacheClient,

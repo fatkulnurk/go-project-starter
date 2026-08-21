@@ -16,16 +16,16 @@ import (
 type RecoveryCodeRepository struct{ base }
 
 // NewRecoveryCodeRepository builds a recovery-code repository bound to the
-// shared pool, driver and app timezone.
-func NewRecoveryCodeRepository(db *sql.DB, driver string, loc *time.Location) *RecoveryCodeRepository {
-	return &RecoveryCodeRepository{base{db: db, driver: driver, loc: loc}}
+// read/write pools, driver and app timezone.
+func NewRecoveryCodeRepository(readDB, writeDB *sql.DB, driver string, loc *time.Location) *RecoveryCodeRepository {
+	return &RecoveryCodeRepository{base{readDB: readDB, writeDB: writeDB, driver: driver, loc: loc}}
 }
 
 // SaveAll implements domain.RecoveryCodeRepository. The code hashes are
 // (user_id, code_hash) primary keys, so re-issuing a set after MFA re-activation
 // must first clear the previous ones.
 func (r *RecoveryCodeRepository) SaveAll(ctx context.Context, userID string, codeHashes []string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.w().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func (r *RecoveryCodeRepository) SaveAll(ctx context.Context, userID string, cod
 // request can win the single-use update, so a code cannot be reused.
 func (r *RecoveryCodeRepository) Consume(ctx context.Context, userID, codeHash string) (bool, error) {
 	now := r.now()
-	res, err := r.db.ExecContext(ctx, r.q(`UPDATE user_recovery_codes SET used_at = ? WHERE user_id = ? AND code_hash = ? AND used_at IS NULL`), now, userID, codeHash)
+	res, err := r.w().ExecContext(ctx, r.q(`UPDATE user_recovery_codes SET used_at = ? WHERE user_id = ? AND code_hash = ? AND used_at IS NULL`), now, userID, codeHash)
 	if err != nil {
 		return false, err
 	}
@@ -62,7 +62,7 @@ func (r *RecoveryCodeRepository) Consume(ctx context.Context, userID, codeHash s
 // DeleteAll implements domain.RecoveryCodeRepository, removing every recovery
 // code stored for the user.
 func (r *RecoveryCodeRepository) DeleteAll(ctx context.Context, userID string) error {
-	_, err := r.db.ExecContext(ctx, r.q(`DELETE FROM user_recovery_codes WHERE user_id = ?`), userID)
+	_, err := r.w().ExecContext(ctx, r.q(`DELETE FROM user_recovery_codes WHERE user_id = ?`), userID)
 	return err
 }
 

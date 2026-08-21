@@ -54,8 +54,8 @@ func Register(reg *seed.Registry, db *sql.DB, dbDriver string) {
 // idempotent (existing codes are left untouched) and returns an error when a
 // repository write fails.
 func (s *RolesPermissionsSeeder) Run(ctx context.Context) error {
-	roles := infrastructure.NewRoleRepository(s.db, s.dbDriver)
-	permissions := infrastructure.NewPermissionRepository(s.db, s.dbDriver)
+	roles := infrastructure.NewRoleRepository(s.db, s.db, s.dbDriver)
+	permissions := infrastructure.NewPermissionRepository(s.db, s.db, s.dbDriver)
 	bootstrap := command.NewBootstrap(roles, permissions, nil, nil)
 	return bootstrap.Execute(ctx, command.BootstrapOptions{
 		DefaultRoles:       append(append([]command.BootstrapRole{}, DefaultRoles...), s.extraRoles...),

@@ -22,7 +22,8 @@ import (
 // optional; a nil Cache disables the versioned permission cache and a nil
 // Auditor skips audit recording.
 type Dependencies struct {
-	DB       *sql.DB
+	ReadDB   *sql.DB // optional read replica; nil = use DB for reads
+	DB       *sql.DB // write database (primary)
 	DBDriver string
 	Cache    cache.Cache
 	CacheTTL time.Duration
@@ -46,9 +47,16 @@ type Module struct {
 // dependencies and returns the assembled Module; it never fails, so callers
 // can rely on the returned module being fully wired.
 func New(deps Dependencies) *Module {
-	roles := infrastructure.NewRoleRepository(deps.DB, deps.DBDriver)
-	permissions := infrastructure.NewPermissionRepository(deps.DB, deps.DBDriver)
-	access := infrastructure.NewUserAccessRepository(deps.DB, deps.DBDriver)
+	// Resolve the read pool: use the dedicated read replica when configured,
+	// otherwise fall back to the primary write pool.
+	readDB := deps.DB
+	if deps.ReadDB != nil {
+		readDB = deps.ReadDB
+	}
+
+	roles := infrastructure.NewRoleRepository(readDB, deps.DB, deps.DBDriver)
+	permissions := infrastructure.NewPermissionRepository(readDB, deps.DB, deps.DBDriver)
+	access := infrastructure.NewUserAccessRepository(readDB, deps.DB, deps.DBDriver)
 
 	var pcache *rbaccache.PermissionCache
 	if deps.Cache != nil {

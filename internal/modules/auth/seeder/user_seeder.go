@@ -82,7 +82,7 @@ func NewUserSeeder(deps Deps, users []SeedUser) *UserSeeder {
 // Run implements seed.Seed, seeding every configured user in order. It stops
 // at the first failure and reports it.
 func (s *UserSeeder) Run(ctx context.Context) error {
-	repo := infrastructure.NewUserRepository(s.deps.DB, s.deps.DBDriver, s.deps.Location)
+	repo := infrastructure.NewUserRepository(s.deps.DB, s.deps.DB, s.deps.DBDriver, s.deps.Location)
 	for _, u := range s.users {
 		if err := seedOneUser(ctx, s.deps, repo, u); err != nil {
 			return err

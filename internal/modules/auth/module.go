@@ -66,7 +66,8 @@ type Settings struct {
 // Dependencies are the ports the module needs; all wired by the composition
 // root.
 type Dependencies struct {
-	DB       *sql.DB
+	ReadDB   *sql.DB // optional read replica; nil = use DB for reads
+	DB       *sql.DB // write database (primary)
 	DBDriver string
 	Cache    cache.Cache
 	Enqueuer appaqueue.Enqueuer
@@ -102,11 +103,18 @@ type Module struct {
 // token/MFA rate-limit stores. The returned Module exposes its use cases via
 // API and registers them on routers through RegisterAPI and RegisterQueue.
 func New(deps Dependencies) *Module {
-	users := infrastructure.NewUserRepository(deps.DB, deps.DBDriver, deps.Location)
-	refreshTokens := infrastructure.NewRefreshTokenRepository(deps.DB, deps.DBDriver, deps.Location)
-	codes := infrastructure.NewVerificationCodeRepository(deps.DB, deps.DBDriver, deps.Location)
-	pending := infrastructure.NewPendingContactChangeRepository(deps.DB, deps.DBDriver, deps.Location)
-	recovery := infrastructure.NewRecoveryCodeRepository(deps.DB, deps.DBDriver, deps.Location)
+	// Resolve the read pool: use the dedicated read replica when configured,
+	// otherwise fall back to the primary write pool.
+	readDB := deps.DB
+	if deps.ReadDB != nil {
+		readDB = deps.ReadDB
+	}
+
+	users := infrastructure.NewUserRepository(readDB, deps.DB, deps.DBDriver, deps.Location)
+	refreshTokens := infrastructure.NewRefreshTokenRepository(readDB, deps.DB, deps.DBDriver, deps.Location)
+	codes := infrastructure.NewVerificationCodeRepository(readDB, deps.DB, deps.DBDriver, deps.Location)
+	pending := infrastructure.NewPendingContactChangeRepository(readDB, deps.DB, deps.DBDriver, deps.Location)
+	recovery := infrastructure.NewRecoveryCodeRepository(readDB, deps.DB, deps.DBDriver, deps.Location)
 
 	roles := rbacAdapter{svc: deps.RBAC}
 
